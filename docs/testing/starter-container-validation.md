@@ -107,6 +107,10 @@ tests and successful Claude SessionStart initialization do not prove every hook 
 
 A later private development candidate passed **109/109 tests on both Node 22 and Node 24** in GitHub Actions. These are historical CI results, separate from the 107-test container results above, and are not public release evidence. The local Docker backend was unavailable for a fresh full container rerun. The clean public candidate preserves the same runtime, contracts and tests; its public CI must still verify its own release commit.
 
-## Clean public candidate regression run
+## Earlier clean public candidate regression run
 
 Before publication, the clean public candidate incorporating source fixes from private development commit `60fec0925c122ac020238b736e64bb39d2fb7df3` ran the full suite locally on Windows: **111 tests, 110 passed, zero failed, one skipped**. The skipped test requires unprivileged POSIX permissions and is expected to run in Linux CI. This does not replace the historical container evidence or establish a public release commit; public CI must verify the published candidate separately.
+
+## Public review correction regression run
+
+After the first public PR review corrections, the local Windows suite ran **114 tests: 113 passed, zero failed, one expected POSIX-permissions skip**. Three new process/CLI regressions cover missing hook session identity, relative memory links and incomplete memory-file reads. This run supersedes the earlier 111-test local candidate count, not its historical container results. Fresh public CI and host installation checks still need to validate the release commit.

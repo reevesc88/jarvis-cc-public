@@ -242,19 +242,20 @@ function checkMemoryCollision() {
   return { rootMemoryMd, subMemoryMd, rootExists, subExists, collision: rootExists && subExists };
 }
 
-function extractMarkdownLinkTargets(text) {
-  // Standard markdown links: [label](target). Collect .md targets, strip any
-  // leading path segments so we can compare against bare filenames.
+function extractMarkdownLinkTargets(text, indexPath) {
+  // Resolve local Markdown targets against the index, preserving directories.
   const targets = new Set();
   const re = /\[[^\]]*\]\(([^)]+)\)/g;
   let m;
   while ((m = re.exec(text)) !== null) {
     let target = m[1].trim();
-    // Strip a possible title in quotes: (file.md "title")
-    const spaceIdx = target.search(/\s/);
-    if (spaceIdx !== -1) target = target.slice(0, spaceIdx);
+    if (target.startsWith('<') && target.includes('>')) target = target.slice(1, target.indexOf('>'));
+    else target = target.split(/\s/)[0];
+    target = target.split(/[?#]/)[0];
+    if (/^[a-z][a-z0-9+.-]*:/i.test(target) || target.startsWith('//')) continue;
+    try { target = decodeURIComponent(target); } catch (_) { continue; }
     if (target.toLowerCase().endsWith('.md')) {
-      targets.add(path.basename(target));
+      targets.add(path.resolve(path.dirname(indexPath), target));
     }
   }
   return targets;
@@ -272,8 +273,8 @@ function findOrphanedMemoryFiles() {
   }
 
   const indexText = fs.readFileSync(indexPath, 'utf8');
-  const linked = extractMarkdownLinkTargets(indexText);
-  const orphaned = mdFiles.filter((f) => !linked.has(f));
+  const linked = extractMarkdownLinkTargets(indexText, indexPath);
+  const orphaned = mdFiles.filter((f) => !linked.has(path.resolve(memoryDir, f)));
   return { indexExists: true, orphaned, checked: mdFiles.length };
 }
 
@@ -291,6 +292,7 @@ function findBrokenWikiLinks() {
   const memoryDir = path.join(HOME_CLAUDE, 'memory');
   const mdFiles = listMdFilesDirect(memoryDir);
   const broken = [];
+  const unreadable = [];
   let totalLinks = 0;
 
   for (const f of mdFiles) {
@@ -299,6 +301,7 @@ function findBrokenWikiLinks() {
     try {
       text = fs.readFileSync(full, 'utf8');
     } catch (e) {
+      unreadable.push({ file: f, error: displayError(e) });
       continue;
     }
     const slugs = extractWikiLinkSlugs(text);
@@ -311,7 +314,7 @@ function findBrokenWikiLinks() {
     }
   }
 
-  return { filesScanned: mdFiles.length, totalLinks, broken };
+  return { filesScanned: mdFiles.length - unreadable.length, totalLinks, broken, unreadable };
 }
 
 // ---------------------------------------------------------------------------
@@ -507,13 +510,17 @@ function cmdMemoryDoctor() {
   // wiki-link ([[slug]]) cross-reference check
   const wiki = findBrokenWikiLinks();
   console.log(`Scanned ${wiki.filesScanned} file(s) under memory/, found ${wiki.totalLinks} [[wiki-link]] reference(s).`);
+  if (wiki.unreadable.length > 0) {
+    problems++;
+    for (const item of wiki.unreadable) console.log(`[FAIL] unreadable memory/${escapeTerminalLine(item.file)}: ${item.error}`);
+  }
   if (wiki.broken.length > 0) {
     problems++;
     console.log(`[FLAG] ${wiki.broken.length} broken [[wiki-link]] reference(s):`);
     for (const b of wiki.broken) {
       console.log(`      memory/${b.from} -> [[${b.slug}]]  (expected ${b.expected}, not found)`);
     }
-  } else {
+  } else if (wiki.unreadable.length === 0) {
     report(true, `all [[wiki-link]] references resolve to an actual file`);
   }
 

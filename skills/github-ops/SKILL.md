@@ -72,7 +72,7 @@ gh issue comment <number> --body "Thanks for reporting. Could you share reproduc
 gh issue list --label "stale" --state open
 
 # Find PRs with no recent activity
-gh pr list --json number,title,updatedAt --jq '.[] | select(.updatedAt < "2026-03-01")'
+gh pr list --json number,title,updatedAt --jq '.[] | select((.updatedAt | fromdateiso8601) < (now - 7*24*60*60))'
 ```
 
 ## CI/CD Operations

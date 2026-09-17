@@ -51,7 +51,7 @@ For each item to remove:
 - Start with SAFE items only
 - Remove one category at a time: deps -> exports -> files -> duplicates
 - Run tests after each batch
-- Commit after each batch
+- Report each verified batch; commit only when the current user has authorized Git commits
 
 ### 4. Consolidate Duplicates
 - Find duplicate components/utilities

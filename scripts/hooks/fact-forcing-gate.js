@@ -83,11 +83,6 @@ const STATE_DIR = path.join(os.homedir(), '.jarvis-cc', 'gateguard');
 const SESSION_TIMEOUT_MS = 30 * 60 * 1000; // 30 minutes of inactivity -> state expires
 const MAX_CHECKED_ENTRIES = 500;
 
-// Fallback per-process session key, used only when no real session id is
-// present anywhere on the payload or in env (e.g. ad hoc manual testing).
-// Stable for the lifetime of this process so repeated calls within one
-// test run still share state, without ever colliding with a real session.
-const FALLBACK_SESSION_KEY = 'proc-' + process.pid + '-' + Date.now();
 
 // --- destructive Bash command detection -----------------------------------
 //
@@ -288,7 +283,7 @@ function sanitizeSessionKey(value) {
  * Resolve a stable session key for this invocation: prefer an explicit
  * session id from the hook payload or environment (mirrors the kinds of
  * fields ECC's own gate checks — session_id/sessionId on the payload,
- * common env vars), and fall back to a stable per-process key otherwise.
+ * common env vars). Without a stable identity, the gate fails open.
  * @param {object} data
  * @returns {string}
  */
@@ -304,7 +299,7 @@ function resolveSessionKey(data) {
     const sanitized = sanitizeSessionKey(candidate);
     if (sanitized) return sanitized;
   }
-  return sanitizeSessionKey(FALLBACK_SESSION_KEY);
+  return '';
 }
 
 function getStateFile(sessionKey) {
@@ -487,6 +482,7 @@ function run(rawInput) {
   }
 
   const sessionKey = resolveSessionKey(data);
+  if (!sessionKey) return emitAllow(); // process-local identities cannot support retries
   const stateFile = getStateFile(sessionKey);
 
   const toolInput = data.tool_input || {};

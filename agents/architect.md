@@ -19,4 +19,4 @@ Use this format for output:
 ## Implementation Notes
 ## Decisions Made (log for memory/)
 
-Do not rush. Cost is not the constraint here — correctness is.
+Work carefully within the user-approved model, budget and task scope. Report when those limits prevent a sound recommendation.

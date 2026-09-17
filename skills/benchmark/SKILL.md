@@ -39,13 +39,13 @@ Measures real browser metrics via a browser automation/devtools MCP (or an equiv
 
 ### Mode 2: API Performance
 
-Benchmarks API endpoints:
+Before generating traffic, obtain approval for a local or staging target, an allowlist of read-only endpoints, request count, concurrency and stop conditions. Use test data; never infer permission to load-test production or invoke write endpoints. Begin with one request and stop on errors or unexpected effects. The following are optional upper bounds, not automatic traffic:
 
 ```
-1. Hit each endpoint 100 times
+1. Run only the approved request count (up to 100 per allowed endpoint)
 2. Measure: p50, p95, p99 latency
 3. Track: response size, status codes
-4. Test under load: 10 concurrent requests
+4. Increase only to approved concurrency (up to 10 requests)
 5. Compare against SLA targets
 ```
 

@@ -893,7 +893,7 @@ test('plugin metadata, command, README, and integration notes publish one consis
   assert.match(integration, /ebe9c99acb5c96f9468de368d8bead775387d1a7/);
   assert.match(integration, /MIT/);
   assert.match(integration, /does not vendor/i);
-  assert.match(command, /scripts\/jarvis\.js agency-doctor/);
+  assert.match(command, /scripts\/jarvis\.js" agency-doctor/);
 });
 
 test('board rejects a done card that depends on an unfinished card', () => {

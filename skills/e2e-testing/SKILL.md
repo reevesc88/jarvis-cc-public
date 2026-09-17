@@ -52,8 +52,9 @@ export class ItemsPage {
   }
 
   async search(query: string) {
+    const response = this.page.waitForResponse(resp => resp.url().includes('/api/search'))
     await this.searchInput.fill(query)
-    await this.page.waitForResponse(resp => resp.url().includes('/api/search'))
+    await response
     await this.page.waitForLoadState('networkidle')
   }
 
@@ -202,23 +203,24 @@ await page.locator('[data-testid="chart"]').screenshot({ path: 'artifacts/chart.
 ### Traces
 
 ```typescript
-await browser.startTracing(page, {
-  path: 'artifacts/trace.json',
+const context = page.context()
+await context.tracing.start({
   screenshots: true,
   snapshots: true,
 })
 // ... test actions ...
-await browser.stopTracing()
+await context.tracing.stop({ path: 'artifacts/trace.zip' })
 ```
 
 ### Video
 
 ```typescript
 // In playwright.config.ts
-use: {
-  video: 'retain-on-failure',
-  videosPath: 'artifacts/videos/'
-}
+import { defineConfig } from '@playwright/test'
+export default defineConfig({
+  outputDir: 'artifacts/test-results',
+  use: { video: 'retain-on-failure' },
+})
 ```
 
 ## CI/CD Integration
@@ -314,11 +316,12 @@ test('trade execution', async ({ page }) => {
   await expect(preview).toContainText('1.0')
 
   // Confirm and wait for blockchain
-  await page.locator('[data-testid="confirm-trade"]').click()
-  await page.waitForResponse(
+  const response = page.waitForResponse(
     resp => resp.url().includes('/api/trade') && resp.status() === 200,
     { timeout: 30000 }
   )
+  await page.locator('[data-testid="confirm-trade"]').click()
+  await response
 
   await expect(page.locator('[data-testid="trade-success"]')).toBeVisible()
 })

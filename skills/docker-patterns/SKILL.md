@@ -127,11 +127,13 @@ services:
     ports:
       - "9229:9229"                   # Node.js debugger
 
-# docker-compose.prod.yml (explicit for production)
+# docker-compose.prod.yml (standalone production app; configure dependencies separately)
 services:
   app:
     build:
+      context: .
       target: production
+    command: ["node", "dist/server.js"]
     restart: always
     deploy:
       resources:
@@ -145,7 +147,7 @@ services:
 docker compose up
 
 # Production
-docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+docker compose -f docker-compose.prod.yml up -d
 ```
 
 ## Networking

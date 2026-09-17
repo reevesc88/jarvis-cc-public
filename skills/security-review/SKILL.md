@@ -19,6 +19,8 @@ This skill ensures all code follows security best practices and identifies poten
 - Storing or transmitting sensitive data
 - Integrating third-party APIs
 
+For cloud logging, CI/CD and infrastructure review, read [Cloud infrastructure security](cloud-infrastructure-security.md). This is supporting reference material, not a separate installed skill.
+
 ## Security Checklist
 
 ### 1. Secrets Management

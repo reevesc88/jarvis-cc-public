@@ -93,11 +93,9 @@ For each error:
 ## Quick Recovery
 
 ```bash
-# Nuclear option: clear all caches
-rm -rf .next node_modules/.cache && npm run build
-
-# Reinstall dependencies
-rm -rf node_modules package-lock.json && npm install
+# Reinstall only after approval of the project package-manager recovery plan.
+# npm ci removes node_modules; preserve the lockfile and inspect local changes first.
+npm ci
 
 # Fix ESLint auto-fixable
 npx eslint . --fix

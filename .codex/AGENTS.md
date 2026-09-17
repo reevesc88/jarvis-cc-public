@@ -10,8 +10,7 @@ This supplements the root `AGENTS.md` with a repo-local ECC baseline.
 
 ## MCP Baseline
 
-Treat `.codex/config.toml` as the default ECC-safe baseline for work in this repository.
-The generated baseline enables GitHub, Context7, Exa, Memory, Playwright, and Sequential Thinking.
+The checked-in `.codex/config.toml` only declares local roles and limits. It does not select permissions, web access or MCP servers. Use your existing host settings; enable any external integration separately after reviewing its code, credentials and data access.
 
 ## Agency Agents for normal use
 

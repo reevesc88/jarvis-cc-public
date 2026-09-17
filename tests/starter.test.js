@@ -223,3 +223,27 @@ test('repair rejects an empty managed source before creating any home exports', 
   assert.match(result.stdout, /empty bundled source/);
   assert.deepEqual(snapshot(f.home), before);
 });
+
+test('gate allows separate invocations when no stable session identity is supplied', t => {
+  const f=fixture(t); const env={...f.env}; delete env.CLAUDE_SESSION_ID; delete env.JARVIS_SESSION_ID; delete env.JARVIS_GATEGUARD;
+  for(let i=0;i<2;i++) {
+    const r=spawnSync(process.execPath,[path.join(root,'scripts/hooks/fact-forcing-gate.js')],{env,encoding:'utf8',input:JSON.stringify({tool_name:'Edit',tool_input:{file_path:path.join(f.temp,'file.txt')}})});
+    assert.equal(r.status,0);assert.equal(JSON.parse(r.stdout).hookSpecificOutput?.permissionDecision === 'deny',false);
+  }
+  const input=JSON.stringify({session_id:'test-'+path.basename(f.temp),tool_name:'Edit',tool_input:{file_path:path.join(f.temp,'file.txt')}});
+  const invoke=()=>JSON.parse(spawnSync(process.execPath,[path.join(root,'scripts/hooks/fact-forcing-gate.js')],{env,encoding:'utf8',input}).stdout);
+  assert.equal(invoke().hookSpecificOutput.permissionDecision,'deny');
+  assert.notEqual(invoke().hookSpecificOutput?.permissionDecision,'deny');
+});
+
+test('memory index resolves fragments and relative paths without basename collisions', t => {
+ const f=fixture(t);put(f.home,'.claude/memory/note.md','note');put(f.home,'.claude/memory/MEMORY.md','[note](note.md#section)');
+ assert.equal(f.run(['memory-doctor']).status,0);
+ put(f.home,'.claude/memory/MEMORY.md','[wrong](missing/note.md)');const r=f.run(['memory-doctor']);assert.equal(r.status,1);assert.match(r.stdout,/orphaned: memory\/note.md/);
+});
+
+test('memory doctor reports an incomplete scan when a note cannot be read', t => {
+ const f=fixture(t);put(f.home,'.claude/memory/note.md','[[missing]]');put(f.home,'.claude/memory/MEMORY.md','[note](note.md)');
+ const loader=put(f.temp,'deny-read.cjs',"const fs=require('fs');const read=fs.readFileSync;fs.readFileSync=function(p,...args){if(String(p).endsWith('note.md')){const e=new Error('fixture unreadable');e.code='EACCES';throw e;}return read.call(this,p,...args);};");
+ const r=f.run(['memory-doctor'],root,{env:{...f.env,NODE_OPTIONS:'--require '+JSON.stringify(loader)}});assert.equal(r.status,1);assert.match(r.stdout,/unreadable.*note.md/);assert.doesNotMatch(r.stdout,/all \[\[wiki-link\]\] references resolve/);
+});

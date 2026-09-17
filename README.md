@@ -78,7 +78,7 @@ A useful first result is a short project explanation and a skill suggestion. The
 | Skills Hub | An optional local Python/Tkinter dashboard that scans the bundled catalog; it does not monitor live agents |
 | Agency validation | Checks policy and authenticated work-plan declarations; it does not execute workers |
 
-The Fact-Forcing Gate asks for facts before an identical retry of a matching operation. It is a workflow aid, not a security sandbox; some failures deliberately allow the operation to proceed.
+The Fact-Forcing Gate asks for facts before an identical retry of a matching operation. It is a workflow aid, not a security sandbox; some failures deliberately allow the operation to proceed, including a missing stable host session ID.
 
 ## Commands and diagnostics
 
@@ -130,11 +130,11 @@ Use the same installation scope when managing Claude plugins if you chose a non-
 
 ## What has been tested?
 
-Pre-release development snapshots passed **107/107 tests in Linux containers on both Node 22.23.2 and 24.21.0**. Fresh offline local installations worked in Claude Code 2.1.260 and Codex CLI 0.154.0, with capabilities discovered by the real hosts. Claude also successfully invoked the neutral SessionStart hook during initialization.
+Historical snapshots from the private development archive passed **107/107 tests in Linux containers on both Node 22.23.2 and 24.21.0**. In those historical snapshots, fresh offline local installations worked in Claude Code 2.1.260 and Codex CLI 0.154.0, with capabilities discovered by the real hosts. Claude also successfully invoked the neutral SessionStart hook during initialization.
 
 See the [container validation report](docs/testing/starter-container-validation.md) for the exact source commit, image IDs, isolation, commands, and limits. This was not a desktop VM or a live AI first-task conversation. Codex hook execution, PreToolUse invocation, sandbox enforcement, and public GitHub installation remain untested.
 
-**Contributors only:** the cloned repository’s `.codex/config.toml` MCP integrations are development configuration, not required for normal JARVIS plugin use. Review that configuration for your own environment before enabling it.
+The checkout does not enable external MCP servers, live web search or permission overrides. Its `.codex/config.toml` declares optional local roles; choose any additional integrations in your own host configuration.
 
 ## Add Agency Agents when you need a specialist
 

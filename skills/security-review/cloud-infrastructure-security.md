@@ -143,10 +143,15 @@ resource "aws_security_group" "bad" {
 
 ```typescript
 // PASS: CORRECT: Comprehensive logging
-import { CloudWatchLogsClient, CreateLogStreamCommand } from '@aws-sdk/client-cloudwatch-logs';
+import { CloudWatchLogsClient, PutLogEventsCommand } from '@aws-sdk/client-cloudwatch-logs';
+
+type SecurityEvent = { type: string; userId: string; ip: string; result: string };
+const cloudwatch = new CloudWatchLogsClient({});
+// Configure the region and least-privilege credentials externally.
+// Provision the log group/stream and an approved retention policy first.
 
 const logSecurityEvent = async (event: SecurityEvent) => {
-  await cloudwatch.putLogEvents({
+  await cloudwatch.send(new PutLogEventsCommand({
     logGroupName: '/aws/security/events',
     logStreamName: 'authentication',
     logEvents: [{
@@ -159,9 +164,11 @@ const logSecurityEvent = async (event: SecurityEvent) => {
         // Never log sensitive data
       })
     }]
-  });
+  }));
 };
 ```
+
+See the [AWS SDK v3 CloudWatch Logs examples](https://docs.aws.amazon.com/sdk-for-javascript/v3/developer-guide/javascript_cloudwatch_code_examples.html) for client/command usage.
 
 #### Verification Steps
 
@@ -176,46 +183,17 @@ const logSecurityEvent = async (event: SecurityEvent) => {
 
 #### Secure Pipeline Configuration
 
-```yaml
-# PASS: CORRECT: Secure GitHub Actions workflow
-name: Deploy
+Before creating a workflow, select reviewed immutable action commit SHAs for checkout, secret scanning and cloud authentication. Use read-only repository permissions by default, disable persisted checkout credentials, and grant `id-token: write` only to an explicitly authorized OIDC deployment job. Configure the cloud trust policy and least-privilege role for that repository and environment. Add dependency scanning using the project's existing lockfile. Never copy an unreviewed mutable `@main` action into a privileged workflow.
 
-on:
-  push:
-    branches: [main]
 
-jobs:
-  deploy:
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read  # Minimal permissions
-
-    steps:
-      - uses: actions/checkout@v4
-
-      # Scan for secrets
-      - name: Secret scanning
-        uses: trufflesecurity/trufflehog@main
-
-      # Dependency audit
-      - name: Audit dependencies
-        run: npm audit --audit-level=high
-
-      # Use OIDC, not long-lived tokens
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          role-to-assume: arn:aws:iam::123456789:role/GitHubActionsRole
-          aws-region: us-east-1
-```
 
 #### Supply Chain Security
 
+Run `npm ci` as an explicit installation command when authorized, outside package lifecycle scripts. Keep the lockfile. Example valid `package.json` scripts:
+
 ```json
-// package.json - Use lock files and integrity checks
 {
   "scripts": {
-    "install": "npm ci",  // Use ci for reproducible builds
     "audit": "npm audit --audit-level=moderate",
     "check": "npm outdated"
   }

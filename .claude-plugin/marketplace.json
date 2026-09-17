@@ -1,0 +1,15 @@
+{
+  "name": "jarvis-cc",
+  "owner": {
+    "name": "Calum Reeves"
+  },
+  "plugins": [
+    {
+      "name": "jarvis-cc",
+      "source": "./",
+      "description": "A welcoming toolkit for Claude Code and Codex: practical skills, specialist agent prompts, hooks, and read-only setup checks.",
+      "version": "2.0.0"
+    }
+  ],
+  "description": "A welcoming toolkit for Claude Code and Codex: practical skills, specialist agent prompts, hooks, and read-only setup checks."
+}

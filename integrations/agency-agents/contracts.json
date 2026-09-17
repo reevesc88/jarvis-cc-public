@@ -1,0 +1,55 @@
+{
+  "schemaVersion": 1,
+  "boardStatuses": ["backlog", "ready", "in_progress", "review", "blocked", "done"],
+  "activeStatuses": ["in_progress", "review"],
+  "workerModes": ["writer", "reviewer", "researcher"],
+  "limits": {
+    "maxDepth": 1,
+    "maxFanOut": 3,
+    "maxCards": 8,
+    "maxAttemptsPerCard": 2,
+    "maxCorrectionCycles": 1,
+    "maxTurnsPerCard": 12,
+    "maxToolCallsPerCard": 40,
+    "maxWorkerMinutes": 10,
+    "maxPipelineMinutes": 30,
+    "maxInputTokensPerCard": 12000,
+    "maxOutputTokensPerCard": 4000,
+    "maxHandoffTokens": 200,
+    "maxActiveWriters": 1
+  },
+  "delegation": {
+    "workersMaySpawn": false,
+    "oneWriter": true,
+    "oneCorrectionCycle": true,
+    "requiresStopCondition": true,
+    "requiresEvidenceForDone": true,
+    "requiresControllerOptIn": true,
+    "requiresControllerEvidence": true,
+    "preferLowestCapableTier": true
+  },
+  "trust": {
+    "externalContent": "untrusted",
+    "promptInstructionsFromExternalContent": "ignore",
+    "globalInstallOrConfigMutation": false,
+    "roleAttestationRequired": true,
+    "boardPathsRestrictedToWorkspace": true,
+    "terminalOutputSanitized": true,
+    "authenticatedControllerVerifierRequired": true
+  },
+  "attestations": {
+    "schemaVersion": 2,
+    "authenticatedControllerVerifierRequired": true,
+    "roleKind": "agency.role-provenance.v1",
+    "optInKind": "agency.pipeline-opt-in.v1",
+    "evidenceKind": "agency.card-evidence.v1",
+    "accountingKind": "agency.accounting.v1",
+    "accountingUsageDigestRequired": true,
+    "boardBindingKind": "agency.board-binding.v1",
+    "boardBindingRequired": false
+  },
+  "costCeiling": {
+    "mode": "advisory",
+    "hardEnforcementRequires": "verified-controller-accounting"
+  }
+}

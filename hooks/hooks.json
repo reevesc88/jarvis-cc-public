@@ -1,0 +1,29 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash|Edit|Write|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/hooks/fact-forcing-gate.js\""
+          }
+        ],
+        "description": "jarvis-cc Fact-Forcing Gate: deny the first destructive Bash command or first Edit/Write/MultiEdit of a file this session, allow a byte-identical retry. Standalone fallback for ECC's GateGuard.",
+        "id": "pre:jarvis-cc:fact-forcing-gate"
+      }
+    ],
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/hooks/session-context-fallback.js\""
+          }
+        ],
+        "description": "JARVIS neutral starter context: additive guidance without reading, replacing, or restoring user configuration.",
+        "id": "session-start:jarvis-cc:context-fallback"
+      }
+    ]
+  }
+}

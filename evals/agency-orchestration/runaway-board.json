@@ -1,0 +1,90 @@
+{
+  "schemaVersion": 1,
+  "enabled": true,
+  "pipelineId": "rejected-runaway-example",
+  "depth": 2,
+  "correctionCycles": 3,
+  "pipelineMinutes": 31,
+  "cards": [
+    {
+      "id": "writer-a",
+      "title": "Unbounded writer A",
+      "status": "in_progress",
+      "role": "engineering-backend-architect",
+      "mode": "writer",
+      "dependencies": [],
+      "attempts": 3,
+      "canSpawn": true,
+      "stopCondition": "",
+      "evidence": [],
+      "budget": {
+        "turns": 50,
+        "toolCalls": 200,
+        "workerMinutes": 60,
+        "inputTokens": 50000,
+        "outputTokens": 20000,
+        "handoffTokens": 2000
+      }
+    },
+    {
+      "id": "writer-b",
+      "title": "Unbounded writer B",
+      "status": "in_progress",
+      "role": "engineering-backend-architect",
+      "mode": "writer",
+      "dependencies": [],
+      "attempts": 3,
+      "canSpawn": true,
+      "stopCondition": "",
+      "evidence": [],
+      "budget": {
+        "turns": 50,
+        "toolCalls": 200,
+        "workerMinutes": 60,
+        "inputTokens": 50000,
+        "outputTokens": 20000,
+        "handoffTokens": 2000
+      }
+    },
+    {
+      "id": "review-a",
+      "title": "Unbounded review A",
+      "status": "review",
+      "role": "testing-reality-checker",
+      "mode": "reviewer",
+      "dependencies": [],
+      "attempts": 3,
+      "canSpawn": true,
+      "stopCondition": "",
+      "evidence": [],
+      "budget": {
+        "turns": 50,
+        "toolCalls": 200,
+        "workerMinutes": 60,
+        "inputTokens": 50000,
+        "outputTokens": 20000,
+        "handoffTokens": 2000
+      }
+    },
+    {
+      "id": "review-b",
+      "title": "Unbounded review B",
+      "status": "review",
+      "role": "testing-reality-checker",
+      "mode": "reviewer",
+      "dependencies": [],
+      "attempts": 3,
+      "canSpawn": true,
+      "stopCondition": "",
+      "evidence": [],
+      "budget": {
+        "turns": 50,
+        "toolCalls": 200,
+        "workerMinutes": 60,
+        "inputTokens": 50000,
+        "outputTokens": 20000,
+        "handoffTokens": 2000
+      }
+    }
+  ]
+}

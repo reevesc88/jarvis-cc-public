@@ -78,7 +78,7 @@ A useful first result is a short project explanation and a skill suggestion. The
 | Skills Hub | An optional local Python/Tkinter dashboard that scans the bundled catalog; it does not monitor live agents |
 | Agency validation | Checks policy and authenticated work-plan declarations; it does not execute workers |
 
-The Fact-Forcing Gate asks for facts before an identical retry of a matching operation. It is a workflow aid, not a security sandbox; some failures deliberately allow the operation to proceed, including a missing stable host session ID.
+The Fact-Forcing Gate asks for facts on the first Edit, Write or MultiEdit of each exact file path. Later operations on that path are not denied by this hook, without comparing their content or tool type. For matching destructive Bash commands, the first exact command string is denied and a byte-identical retry is not denied by this hook. The gate does not verify explanations or grant authorization. It is a workflow aid, not a security sandbox; non-denial paths return no permission decision, so normal host permission checks still apply. Missing session identity or state-write failures also leave the decision to the host.
 
 ## Commands and diagnostics
 
@@ -115,7 +115,7 @@ These commands are read-only. They check the bundle, Agency policy, and optional
 - **The dashboard does not open:** check `python --version` and `python -m tkinter` in your terminal. Tkinter and a graphical desktop are required; the dashboard is optional.
 - **A command or skill is missing:** confirm the plugin is enabled in your host and start a new session. Claude slash-command names do not necessarily apply in Codex.
 - **An old personal instruction still appears after upgrading:** restart the host and inspect any files you previously exported using version 1.x. Version 2 leaves those existing files untouched; it cannot remove or override your own configuration.
-- **The edit gate denies an operation once:** read its explanation, present the requested facts, and retry the exact same authorized operation. Do not keep changing the command to get around it.
+- **The file gate denies a first touch:** read its explanation and present the requested facts before continuing authorized work on that file. It tracks the exact file path, not edit contents. For a destructive Bash denial, retry the byte-identical authorized command after presenting the facts; do not rephrase commands to evade the reminder.
 
 ## Update or remove
 

@@ -189,7 +189,7 @@ Before creating a workflow, select reviewed immutable action commit SHAs for che
 
 #### Supply Chain Security
 
-Run `npm ci` as an explicit installation command when authorized, outside package lifecycle scripts. Keep the lockfile. Example valid `package.json` scripts:
+For an approved dependency installation, use `npm ci --ignore-scripts` with the existing lockfile. This suppresses dependency lifecycle scripts; review and separately authorize any required setup script before running it. Keep installation commands outside lifecycle scripts themselves. Example valid `package.json` scripts:
 
 ```json
 {

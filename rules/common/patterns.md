@@ -9,8 +9,8 @@ When implementing new functionality:
    - Extensibility analysis
    - Relevance scoring
    - Implementation planning
-3. Clone best match as foundation
-4. Iterate within proven structure
+3. Review useful patterns, licences and dependencies; propose the exact adoption scope for current-user approval
+4. Apply only approved changes within the existing project, preserving concurrent work
 
 ## Design Patterns
 

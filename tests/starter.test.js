@@ -234,6 +234,9 @@ test('gate allows separate invocations when no stable session identity is suppli
   const invoke=()=>JSON.parse(spawnSync(process.execPath,[path.join(root,'scripts/hooks/fact-forcing-gate.js')],{env,encoding:'utf8',input}).stdout);
   assert.equal(invoke().hookSpecificOutput.permissionDecision,'deny');
   assert.notEqual(invoke().hookSpecificOutput?.permissionDecision,'deny');
+  const changed=JSON.stringify({session_id:'test-'+path.basename(f.temp),tool_name:'Write',tool_input:{file_path:path.join(f.temp,'file.txt'),content:'different content'}});
+  const later=spawnSync(process.execPath,[path.join(root,'scripts/hooks/fact-forcing-gate.js')],{env,encoding:'utf8',input:changed});
+  assert.equal(later.status,0);assert.notEqual(JSON.parse(later.stdout).hookSpecificOutput?.permissionDecision,'deny');
 });
 
 test('memory index resolves fragments and relative paths without basename collisions', t => {
@@ -246,4 +249,18 @@ test('memory doctor reports an incomplete scan when a note cannot be read', t =>
  const f=fixture(t);put(f.home,'.claude/memory/note.md','[[missing]]');put(f.home,'.claude/memory/MEMORY.md','[note](note.md)');
  const loader=put(f.temp,'deny-read.cjs',"const fs=require('fs');const read=fs.readFileSync;fs.readFileSync=function(p,...args){if(String(p).endsWith('note.md')){const e=new Error('fixture unreadable');e.code='EACCES';throw e;}return read.call(this,p,...args);};");
  const r=f.run(['memory-doctor'],root,{env:{...f.env,NODE_OPTIONS:'--require '+JSON.stringify(loader)}});assert.equal(r.status,1);assert.match(r.stdout,/unreadable.*note.md/);assert.doesNotMatch(r.stdout,/all \[\[wiki-link\]\] references resolve/);
+});
+
+test('gate abstains instead of granting permission on every non-denial path', t => {
+ const f=fixture(t);const env={...f.env};delete env.CLAUDE_SESSION_ID;delete env.JARVIS_SESSION_ID;delete env.JARVIS_GATEGUARD;
+ const hook=path.join(root,'scripts/hooks/fact-forcing-gate.js');
+ const run=(data,extra={})=>{const r=spawnSync(process.execPath,[hook],{env:{...env,...extra},encoding:'utf8',input:typeof data==='string'?data:JSON.stringify(data)});assert.equal(r.status,0);return JSON.parse(r.stdout);};
+ for(const data of ['{bad',{}, {tool_name:'Read'}, {session_id:'test-'+path.basename(f.temp),tool_name:'Bash',tool_input:{command:'git status'}}, {session_id:'x',tool_name:'Edit',tool_input:{}}, {session_id:'x',tool_name:'MultiEdit',tool_input:{edits:[]}}])assert.deepEqual(run(data),{});
+ const edit={session_id:'test-'+path.basename(f.temp),tool_name:'Write',tool_input:{file_path:'test.txt',content:'test'}};
+ assert.deepEqual(run(edit,{JARVIS_GATEGUARD:'off'}),{});
+ assert.equal(run(edit).hookSpecificOutput.permissionDecision,'deny');assert.deepEqual(run(edit),{});
+ const bash={session_id:edit.session_id,tool_name:'Bash',tool_input:{command:'rm -rf example.txt'}};
+ assert.equal(run(bash).hookSpecificOutput.permissionDecision,'deny');assert.deepEqual(run(bash),{});
+ const blocked=path.join(f.temp,'blocked-home');fs.mkdirSync(blocked);put(blocked,'.jarvis-cc','block state directory');
+ assert.deepEqual(run(edit,{HOME:blocked,USERPROFILE:blocked}),{});
 });

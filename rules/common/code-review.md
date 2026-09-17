@@ -117,8 +117,8 @@ Suggested roles:
 ## Approval Criteria
 
 - **Approve**: No CRITICAL or HIGH issues
-- **Warning**: Only HIGH issues (merge with caution)
-- **Block**: CRITICAL issues found
+- **Warning**: Only MEDIUM or LOW issues remain; report their impact and follow the project merge policy
+- **Block**: Any CRITICAL or HIGH issue remains unresolved
 
 ## Integration with Other Rules
 

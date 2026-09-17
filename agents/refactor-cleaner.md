@@ -70,14 +70,14 @@ Before removing:
 After each batch:
 - [ ] Build succeeds
 - [ ] Tests pass
-- [ ] Committed with descriptive message
+- [ ] Reported verified changes; committed with a descriptive message only if the current user authorized Git commits
 
 ## Key Principles
 
 1. **Start small** -- one category at a time
 2. **Test often** -- after every batch
 3. **Be conservative** -- when in doubt, don't remove
-4. **Document** -- descriptive commit messages per batch
+4. **Document** -- describe each verified batch; use commit messages only for authorized commits
 5. **Never remove** during active feature development or before deploys
 
 ## When NOT to Use

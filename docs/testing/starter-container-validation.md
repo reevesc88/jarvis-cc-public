@@ -114,3 +114,7 @@ Before publication, the clean public candidate incorporating source fixes from p
 ## Public review correction regression run
 
 After the first public PR review corrections, the local Windows suite ran **114 tests: 113 passed, zero failed, one expected POSIX-permissions skip**. Three new process/CLI regressions cover missing hook session identity, relative memory links and incomplete memory-file reads. This run supersedes the earlier 111-test local candidate count, not its historical container results. Fresh public CI and host installation checks still need to validate the release commit.
+
+## Host-permission correction regression run
+
+The subsequent bounded hook correction ran **115 tests on Windows: 114 passed, zero failed, one expected POSIX-permissions skip**. Non-denial gate paths now abstain with no permission decision, preserving normal host approval checks. The regression covers disabled/sessionless/malformed inputs, ordinary tools, retries and persistence failure. File reminders remain keyed by exact path, not edit contents; destructive Bash reminders retain exact-command keys.

@@ -2,8 +2,8 @@
 /**
  * PreToolUse Hook: jarvis-cc Fact-Forcing Gate
  *
- * Standalone, jarvis-cc-owned reimplementation of the "deny the first touch,
- * allow a byte-identical retry" behavior contract used by ECC's GateGuard
+ * Standalone, jarvis-cc-owned implementation of path-based file first-touch
+ * and exact-command Bash retry reminders inspired by ECC's GateGuard
  * (scripts/hooks/gateguard-fact-force.js in the ecc plugin marketplace).
  * Written independently so this protection keeps working even if the ECC
  * plugin is ever removed or disabled.
@@ -15,9 +15,11 @@
  *   - The FIRST attempt of a given exact destructive Bash command string
  *     this session is denied, with a message asking for an impact list and
  *     rollback plan before retrying.
- *   - A byte-identical retry (same file_path, or the identical command
- *     string) is allowed straight through, because the key was already
- *     marked "checked" on the first (denied) attempt.
+ *   - Later file operations with the same exact file_path are not denied by this hook;
+ *     tool type, content and replacement strings are not compared.
+ *   - Destructive Bash retries require the identical command string.
+ *     The first denied attempt marks that path or command as checked.
+ *     This reminder does not authenticate approvals or verify stated facts.
  *   - Routine (non-destructive) Bash commands are never gated by this hook.
  *   - State persists per-session on disk so the gate does not reset between
  *     tool calls in the same session, but does reset for a new session.
@@ -51,10 +53,8 @@
  *     keys)
  *
  * sessionId is derived the same general way ECC's hook does: prefer an
- * explicit session id carried on the hook payload or in env, and fall back
- * to a stable per-process key (so repeated invocations of the SAME running
- * process still share state) when no session id is available at all, e.g.
- * during local manual testing.
+ * explicit session id carried on the hook payload or in env. Without a
+ * stable identity, the hook abstains without recording state.
  *
  * I/O CONTRACT
  * ------------
@@ -62,14 +62,12 @@
  * JSON to stdout:
  *   deny:  {"hookSpecificOutput":{"hookEventName":"PreToolUse",
  *           "permissionDecision":"deny","permissionDecisionReason":"..."}}
- *   allow: {"hookSpecificOutput":{"hookEventName":"PreToolUse",
- *           "permissionDecision":"allow"}}
- * Never throws past main(): any unexpected error falls through to an allow
- * decision so a bug in this hook can never wedge a session.
+ *   abstain: {} (normal host permission checks continue)
+ * Errors also abstain so this reminder does not replace host permissions.
  *
  * MANUAL TEST:
- *   echo '{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"rm -rf /tmp/x"}}' | node fact-forcing-gate.js
- *   echo '{"hook_event_name":"PreToolUse","tool_name":"Write","tool_input":{"file_path":"C:\\ai\\foo.js"}}' | node fact-forcing-gate.js
+ *   echo '{"session_id":"manual-example","hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"rm -rf /tmp/x"}}' | node fact-forcing-gate.js
+ *   echo '{"session_id":"manual-example","hook_event_name":"PreToolUse","tool_name":"Write","tool_input":{"file_path":"C:\\ai\\foo.js"}}' | node fact-forcing-gate.js
  */
 
 'use strict';
@@ -407,7 +405,9 @@ function fileGateMessage(action, filePath) {
     '3. If this file reads/writes data, describe the schema (redacted/synthetic values only).',
     "4. Quote the user's current instruction verbatim.",
     '',
-    'Present the facts, then retry the exact same operation.',
+    'Present the facts, then continue the authorized work on this file.',
+    'This is a first-touch reminder keyed only by file_path; later content is not compared.',
+    'It does not grant permission for a changed task or verify your explanation.',
     '',
     '(Set JARVIS_GATEGUARD=off to disable this gate for authorized repair work.)'
   ].join('\n');
@@ -444,13 +444,9 @@ function emitDeny(reason) {
   }));
 }
 
-function emitAllow() {
-  process.stdout.write(JSON.stringify({
-    hookSpecificOutput: {
-      hookEventName: 'PreToolUse',
-      permissionDecision: 'allow'
-    }
-  }));
+function emitAbstain() {
+  // No permission decision: the host must apply its normal approval policy.
+  process.stdout.write(JSON.stringify({}));
 }
 
 function readStdinSync() {
@@ -474,15 +470,15 @@ function run(rawInput) {
   try {
     data = typeof rawInput === 'string' ? JSON.parse(rawInput) : (rawInput || {});
   } catch (_) {
-    return emitAllow(); // malformed input: fail open
+    return emitAbstain(); // malformed input: fail open
   }
 
   if (isGateDisabled()) {
-    return emitAllow();
+    return emitAbstain();
   }
 
   const sessionKey = resolveSessionKey(data);
-  if (!sessionKey) return emitAllow(); // process-local identities cannot support retries
+  if (!sessionKey) return emitAbstain(); // process-local identities cannot support retries
   const stateFile = getStateFile(sessionKey);
 
   const toolInput = data.tool_input || {};
@@ -492,12 +488,12 @@ function run(rawInput) {
 
   if (toolName === 'Edit' || toolName === 'Write') {
     const filePath = toolInput.file_path || '';
-    if (!filePath) return emitAllow();
+    if (!filePath) return emitAbstain();
 
-    if (isChecked(stateFile, filePath)) return emitAllow();
+    if (isChecked(stateFile, filePath)) return emitAbstain();
 
     const ok = markChecked(stateFile, filePath);
-    if (!ok) return emitAllow(); // fail open if state cannot be persisted
+    if (!ok) return emitAbstain(); // fail open if state cannot be persisted
 
     return emitDeny(fileGateMessage(toolName === 'Edit' ? 'edit' : 'create', filePath));
   }
@@ -510,27 +506,27 @@ function run(rawInput) {
       if (isChecked(stateFile, filePath)) continue;
 
       const ok = markChecked(stateFile, filePath);
-      if (!ok) return emitAllow();
+      if (!ok) return emitAbstain();
 
       return emitDeny(fileGateMessage('edit', filePath));
     }
-    return emitAllow();
+    return emitAbstain();
   }
 
   if (toolName === 'Bash') {
     const command = toolInput.command || '';
-    if (!isDestructiveCommand(command)) return emitAllow();
+    if (!isDestructiveCommand(command)) return emitAbstain();
 
     const key = 'cmd:' + crypto.createHash('sha256').update(command).digest('hex');
-    if (isChecked(stateFile, key)) return emitAllow();
+    if (isChecked(stateFile, key)) return emitAbstain();
 
     const ok = markChecked(stateFile, key);
-    if (!ok) return emitAllow();
+    if (!ok) return emitAbstain();
 
     return emitDeny(bashGateMessage(command));
   }
 
-  return emitAllow();
+  return emitAbstain();
 }
 
 function main() {
@@ -539,7 +535,7 @@ function main() {
     run(raw);
   } catch (_) {
     // Last-resort guard: never let a bug in this hook block a tool call.
-    try { emitAllow(); } catch (_) { /* ignore */ }
+    try { emitAbstain(); } catch (_) { /* ignore */ }
   }
 }
 

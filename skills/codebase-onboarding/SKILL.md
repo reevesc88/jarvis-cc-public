@@ -218,8 +218,8 @@ Generate or update a project-specific CLAUDE.md based on detected conventions. I
 
 ### Example 1: First time in a new repo
 **User**: "Onboard me to this codebase"
-**Action**: Run full 4-phase workflow → produce Onboarding Guide + Starter CLAUDE.md
-**Output**: Onboarding Guide printed directly to the conversation, plus a `CLAUDE.md` written to the project root
+**Action**: Inspect the codebase and draft an Onboarding Guide plus proposed starter instructions
+**Output**: Print both in the conversation. Write `CLAUDE.md` only after the user explicitly requests file generation or approves the draft.
 
 ### Example 2: Generate CLAUDE.md for existing project
 **User**: "Generate a CLAUDE.md for this project"

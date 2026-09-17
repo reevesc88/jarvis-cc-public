@@ -17,12 +17,14 @@ Invoke this skill:
 
 ## Verification Phases
 
+Run each check directly and inspect its exit status before continuing. If output must be saved, capture it without replacing the check's status with a display/filter command.
+
 ### Phase 1: Build Verification
 ```bash
 # Check if project builds
-npm run build 2>&1 | tail -20
+npm run build
 # OR
-pnpm build 2>&1 | tail -20
+pnpm build
 ```
 
 If build fails, STOP and fix before continuing.
@@ -30,10 +32,10 @@ If build fails, STOP and fix before continuing.
 ### Phase 2: Type Check
 ```bash
 # TypeScript projects
-npx tsc --noEmit 2>&1 | head -30
+npx tsc --noEmit
 
 # Python projects
-pyright . 2>&1 | head -30
+pyright .
 ```
 
 Report all type errors. Fix critical ones before continuing.
@@ -41,16 +43,16 @@ Report all type errors. Fix critical ones before continuing.
 ### Phase 3: Lint Check
 ```bash
 # JavaScript/TypeScript
-npm run lint 2>&1 | head -30
+npm run lint
 
 # Python
-ruff check . 2>&1 | head -30
+ruff check .
 ```
 
 ### Phase 4: Test Suite
 ```bash
 # Run tests with coverage
-npm run test -- --coverage 2>&1 | tail -50
+npm run test -- --coverage
 
 # Check coverage threshold
 # Target: 80% minimum

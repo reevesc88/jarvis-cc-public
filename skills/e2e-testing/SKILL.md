@@ -304,10 +304,14 @@ test('wallet connection', async ({ page, context }) => {
 
 ```typescript
 test('trade execution', async ({ page }) => {
-  // Skip on production — real money
-  test.skip(process.env.NODE_ENV === 'production', 'Skip on production')
+  // Set these only after the user authorizes this exact target and trade.
+  // Prefer an isolated test account/network with synthetic funds.
+  const approvedOrigin = process.env.E2E_APPROVED_TRADE_ORIGIN
+  test.skip(process.env.E2E_TRADE_AUTHORIZED !== 'true' || !approvedOrigin, 'Trade not explicitly authorized')
 
   await page.goto('/markets/test-market')
+  // Check the actual destination before any trade interaction (including redirects).
+  expect(new URL(page.url()).origin).toBe(approvedOrigin)
   await page.locator('[data-testid="position-yes"]').click()
   await page.locator('[data-testid="trade-amount"]').fill('1.0')
 

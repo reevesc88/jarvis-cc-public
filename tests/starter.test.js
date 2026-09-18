@@ -298,3 +298,61 @@ test('publication failure retains its cause when temporary cleanup also fails', 
  assert.equal(result.status,1);assert.match(result.stdout,/original publication failure/);assert.match(result.stdout,/WARN.*cleanup blocked/);
  assert.equal(fs.existsSync(path.join(f.home,'.claude/CLAUDE.md')),false);
 });
+
+
+test('concurrent hook updates retain every denied first touch', async t => {
+ const f=fixture(t); const env={...f.env};delete env.JARVIS_GATEGUARD;
+ const statePath=put(f.home,'.jarvis-cc/gateguard/state-concurrent.json',JSON.stringify({checked:[],lastActive:Date.now()}));
+ const loader=put(f.temp,'slow-rename.cjs',"const fs=require('fs');const rename=fs.renameSync;fs.renameSync=(...args)=>{Atomics.wait(new Int32Array(new SharedArrayBuffer(4)),0,0,20);return rename(...args);};");
+ const {spawn}=require('node:child_process');
+ const outputs=await Promise.all(Array.from({length:12},(_,i)=>new Promise((resolve,reject)=>{
+  const child=spawn(process.execPath,['--require',loader,path.join(root,'scripts/hooks/fact-forcing-gate.js')],{env});let output='';child.stdout.on('data',data=>output+=data);child.on('error',reject);child.on('close',code=>{if(code!==0)reject(new Error('hook failed'));else resolve([i,JSON.parse(output)]);});child.stdin.end(JSON.stringify({session_id:'concurrent',tool_name:'Edit',tool_input:{file_path:'file-'+i}}));
+ })));
+ const state=JSON.parse(fs.readFileSync(statePath));
+ assert.equal(outputs.filter(([,result])=>result.hookSpecificOutput?.permissionDecision==='deny').length,12);
+ for(const [i] of outputs) {
+  const retry=spawnSync(process.execPath,[path.join(root,'scripts/hooks/fact-forcing-gate.js')],{env,encoding:'utf8',input:JSON.stringify({session_id:'concurrent',tool_name:'Edit',tool_input:{file_path:'file-'+i}})});
+  assert.deepEqual(JSON.parse(retry.stdout),{});
+ }
+ for(const [i,result] of outputs)if(result.hookSpecificOutput?.permissionDecision==='deny')assert.ok(state.checked.includes('file-'+i),'lost denied key '+i);
+});
+
+test('session punctuation cannot share a first-touch key', t => {
+ const f=fixture(t);const env={...f.env};delete env.JARVIS_GATEGUARD;
+ for(const session_id of ['a/b','a:b','a_b']) {
+  const result=spawnSync(process.execPath,[path.join(root,'scripts/hooks/fact-forcing-gate.js')],{env,encoding:'utf8',input:JSON.stringify({session_id,tool_name:'Edit',tool_input:{file_path:'same.txt'}})});
+  assert.equal(JSON.parse(result.stdout).hookSpecificOutput?.permissionDecision,'deny',session_id);
+ }
+});
+
+test('memory wiki targets stay in direct Markdown inventory', t => {
+ const f=fixture(t);put(f.home,'.claude/outside.md','outside');put(f.home,'.claude/memory/note.md','[[../outside]]');put(f.home,'.claude/memory/MEMORY.md','[note](note.md)');
+ const result=f.run(['memory-doctor']);assert.equal(result.status,1);assert.match(result.stdout,/broken/);
+});
+
+test('memory wiki diagnostics escape terminal controls', t => {
+ const f=fixture(t);put(f.home,'.claude/memory/note.md','[['+String.fromCharCode(27)+'[2Jmissing]]');put(f.home,'.claude/memory/MEMORY.md','[note](note.md)');
+ const result=f.run(['memory-doctor']);assert.equal(result.status,1);assert.equal(result.stdout.includes(String.fromCharCode(27)),false);
+});
+
+test('SQL reminder recognizes env launchers and assignments', () => {
+ const {isDestructiveCommand}=require('../scripts/hooks/fact-forcing-gate');
+ for(const text of ["env psql -c 'DROP TABLE users'","PGAPPNAME=jarvis env MODE=test mysql -e 'DELETE FROM users'"])assert.equal(isDestructiveCommand(text),true,text);
+ assert.equal(isDestructiveCommand("env echo 'psql -c DROP TABLE users'"),false);
+});
+
+
+test('busy session lock abstains within a bounded wait and preserves its owner', t => {
+ const f=fixture(t);const lock=path.join(f.home,'.jarvis-cc/gateguard/state-busy.json.lock');fs.mkdirSync(lock,{recursive:true});
+ const result=spawnSync(process.execPath,[path.join(root,'scripts/hooks/fact-forcing-gate.js')],{env:{...f.env,JARVIS_GATEGUARD:'on'},encoding:'utf8',timeout:5000,input:JSON.stringify({session_id:'busy',tool_name:'Edit',tool_input:{file_path:'busy.txt'}})});
+ assert.equal(result.status,0);assert.deepEqual(JSON.parse(result.stdout),{});assert.equal(fs.existsSync(lock),true);
+ assert.equal(fs.existsSync(path.join(f.home,'.jarvis-cc/gateguard/state-busy.json')),false);
+});
+
+test('session transaction releases its lock on a publication error', t => {
+ const f=fixture(t);const loader=put(f.temp,'deny-state.cjs',"require('fs').renameSync=()=>{throw new Error('fixture publication failure');};");
+ const input=JSON.stringify({session_id:'failure',tool_name:'Edit',tool_input:{file_path:'retry.txt'}});const env={...f.env,JARVIS_GATEGUARD:'on'};const hook=path.join(root,'scripts/hooks/fact-forcing-gate.js');
+ const failed=spawnSync(process.execPath,['--require',loader,hook],{env,encoding:'utf8',input});assert.deepEqual(JSON.parse(failed.stdout),{});
+ assert.equal(fs.existsSync(path.join(f.home,'.jarvis-cc/gateguard/state-failure.json.lock')),false);
+ const retry=spawnSync(process.execPath,[hook],{env,encoding:'utf8',input});assert.equal(JSON.parse(retry.stdout).hookSpecificOutput.permissionDecision,'deny');
+});

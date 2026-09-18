@@ -307,8 +307,7 @@ function findBrokenWikiLinks() {
     const slugs = extractWikiLinkSlugs(text);
     for (const slug of slugs) {
       totalLinks++;
-      const targetPath = path.join(memoryDir, slug + '.md');
-      if (!fileExists(targetPath)) {
+      if (!mdFiles.includes(slug + '.md')) {
         broken.push({ from: f, slug, expected: path.join('memory', slug + '.md') });
       }
     }
@@ -518,7 +517,7 @@ function cmdMemoryDoctor() {
     problems++;
     console.log(`[FLAG] ${wiki.broken.length} broken [[wiki-link]] reference(s):`);
     for (const b of wiki.broken) {
-      console.log(`      memory/${b.from} -> [[${b.slug}]]  (expected ${b.expected}, not found)`);
+      console.log(`      memory/${escapeTerminalLine(b.from)} -> [[${escapeTerminalLine(b.slug)}]]  (expected ${escapeTerminalLine(b.expected)}, not found)`);
     }
   } else if (wiki.unreadable.length === 0) {
     report(true, `all [[wiki-link]] references resolve to an actual file`);

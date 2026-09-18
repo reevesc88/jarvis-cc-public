@@ -233,11 +233,17 @@ function isDestructivePowerShellRemove(tokens) {
 }
 
 // Recognize common SQL CLI argument forms only. This is not a shell parser:
-// substitutions, wrappers and indirect SQL inputs remain outside this reminder.
+// Only plain env launchers/assignments are recognized; substitutions, other wrappers
+// and indirect SQL inputs remain outside this reminder.
 function hasDestructiveSqlArgument(command) {
   const segments = command.match(/(?:'(?:[^'\\]|\\.)*'|"(?:[^"\\]|\\.)*"|[^;|&\r\n])+/g) || [];
   for (const segment of segments) {
     const tokens = segment.match(/(?:'(?:[^'\\]|\\.)*'|"(?:[^"\\]|\\.)*"|[^\s'"])+/g) || [];
+    while (/^[A-Za-z_][A-Za-z0-9_]*=/.test(tokens[0] || '')) tokens.shift();
+    if (baseCommand(tokens[0]) === 'env') {
+      tokens.shift();
+      while (/^[A-Za-z_][A-Za-z0-9_]*=/.test(tokens[0] || '')) tokens.shift();
+    }
     const client = baseCommand(tokens[0]);
     const flag = client === 'psql' ? ['-c', '--command'] : ['mysql', 'mariadb'].includes(client) ? ['-e', '--execute'] : null;
     if (!flag) continue;
@@ -292,7 +298,7 @@ function sanitizeSessionKey(value) {
   const raw = String(value || '').trim();
   if (!raw) return '';
   const sanitized = raw.replace(/[^a-zA-Z0-9_-]/g, '_');
-  if (sanitized && sanitized.length <= 80) return sanitized;
+  if (sanitized === raw && sanitized.length <= 80) return sanitized;
   return 'sid-' + crypto.createHash('sha256').update(raw).digest('hex').slice(0, 24);
 }
 
@@ -339,70 +345,39 @@ function loadState(stateFile) {
   return { checked: [], lastActive: Date.now() };
 }
 
-/**
- * Persist state atomically (write to a temp file, then rename), merging
- * with whatever is currently on disk so a concurrent writer's entries are
- * not lost. Never throws; returns false on failure so callers can fail open
- * instead of denying forever.
- * @param {string} stateFile
- * @param {{checked: string[]}} state
- * @returns {boolean}
- */
-function saveState(stateFile, state) {
-  let tmpFile = null;
+// Serialize the whole read/check/write transaction, not just the final rename.
+// A busy or abandoned lock gets at most one second of waiting, then this
+// optional reminder abstains. Never reclaim a lock that another process may own.
+function checkAndMark(stateFile, key) {
+  const lock = stateFile + '.lock';
+  let ownsLock = false;
+  let temporary;
   try {
     fs.mkdirSync(path.dirname(stateFile), { recursive: true });
-
-    let merged = Array.isArray(state.checked) ? state.checked.slice() : [];
-    try {
-      if (fs.existsSync(stateFile)) {
-        const onDisk = loadState(stateFile);
-        if (Array.isArray(onDisk.checked)) {
-          merged = Array.from(new Set([...onDisk.checked, ...merged]));
-        }
+    const deadline = performance.now() + 1000;
+    while (!ownsLock) {
+      try { fs.mkdirSync(lock); ownsLock = true; }
+      catch (error) {
+        if (error.code !== 'EEXIST' || performance.now() >= deadline) return 'unavailable';
+        Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 10);
       }
-    } catch (_) {
-      /* ignore corrupt on-disk state, proceed with in-memory version */
     }
-    if (merged.length > MAX_CHECKED_ENTRIES) {
-      merged = merged.slice(merged.length - MAX_CHECKED_ENTRIES);
-    }
-
-    const finalState = { checked: merged, lastActive: Date.now() };
-    tmpFile = `${stateFile}.tmp.${process.pid}.${crypto.randomBytes(4).toString('hex')}`;
-    fs.writeFileSync(tmpFile, JSON.stringify(finalState, null, 2), 'utf8');
-    fs.renameSync(tmpFile, stateFile);
-    tmpFile = null;
-    return true;
+    const state = loadState(stateFile);
+    const checked = state.checked.includes(key);
+    if (!checked) state.checked.push(key);
+    state.checked = state.checked.slice(-MAX_CHECKED_ENTRIES);
+    state.lastActive = Date.now();
+    temporary = stateFile + '.tmp.' + process.pid + '.' + crypto.randomBytes(4).toString('hex');
+    fs.writeFileSync(temporary, JSON.stringify(state), 'utf8');
+    fs.renameSync(temporary, stateFile);
+    temporary = null;
+    return checked ? 'checked' : 'new';
   } catch (_) {
-    if (tmpFile) {
-      try { fs.unlinkSync(tmpFile); } catch (_) { /* ignore */ }
-    }
-    return false;
+    return 'unavailable';
+  } finally {
+    if (temporary) { try { fs.unlinkSync(temporary); } catch (_) { /* abstain on I/O failure */ } }
+    if (ownsLock) { try { fs.rmdirSync(lock); } catch (_) { /* future calls abstain if lock remains */ } }
   }
-}
-
-function isChecked(stateFile, key) {
-  const state = loadState(stateFile);
-  const checked = state.checked.includes(key);
-  if (checked) saveState(stateFile, state); // checked activity also renews the inactivity timer
-  return checked;
-}
-
-/**
- * Mark a key as checked (first-touch recorded). Returns whether the write
- * succeeded so the caller can fail open (allow) rather than deny forever if
- * persistence is broken.
- * @param {string} stateFile
- * @param {string} key
- * @returns {boolean}
- */
-function markChecked(stateFile, key) {
-  const state = loadState(stateFile);
-  if (!state.checked.includes(key)) {
-    state.checked.push(key);
-  }
-  return saveState(stateFile, state);
 }
 
 // --- gate messages -----------------------------------------------------
@@ -511,10 +486,7 @@ function run(rawInput) {
     const filePath = toolInput.file_path || '';
     if (!filePath) return emitAbstain();
 
-    if (isChecked(stateFile, filePath)) return emitAbstain();
-
-    const ok = markChecked(stateFile, filePath);
-    if (!ok) return emitAbstain(); // fail open if state cannot be persisted
+    if (checkAndMark(stateFile, filePath) !== 'new') return emitAbstain();
 
     return emitDeny(fileGateMessage(toolName === 'Edit' ? 'edit' : 'create', filePath));
   }
@@ -524,10 +496,9 @@ function run(rawInput) {
     for (const edit of edits) {
       const filePath = edit && edit.file_path;
       if (!filePath) continue;
-      if (isChecked(stateFile, filePath)) continue;
-
-      const ok = markChecked(stateFile, filePath);
-      if (!ok) return emitAbstain();
+      const result = checkAndMark(stateFile, filePath);
+      if (result === 'checked') continue;
+      if (result !== 'new') return emitAbstain();
 
       return emitDeny(fileGateMessage('edit', filePath));
     }
@@ -539,10 +510,7 @@ function run(rawInput) {
     if (!isDestructiveCommand(command)) return emitAbstain();
 
     const key = 'cmd:' + crypto.createHash('sha256').update(command).digest('hex');
-    if (isChecked(stateFile, key)) return emitAbstain();
-
-    const ok = markChecked(stateFile, key);
-    if (!ok) return emitAbstain();
+    if (checkAndMark(stateFile, key) !== 'new') return emitAbstain();
 
     return emitDeny(bashGateMessage(command));
   }

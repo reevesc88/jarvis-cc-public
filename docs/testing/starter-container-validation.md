@@ -118,3 +118,7 @@ After the first public PR review corrections, the local Windows suite ran **114 
 ## Host-permission correction regression run
 
 The subsequent bounded hook correction ran **115 tests on Windows: 114 passed, zero failed, one expected POSIX-permissions skip**. Non-denial gate paths now abstain with no permission decision, preserving normal host approval checks. The regression covers disabled/sessionless/malformed inputs, ordinary tools, retries and persistence failure. File reminders remain keyed by exact path, not edit contents; destructive Bash reminders retain exact-command keys.
+
+## Final bounded release review regression run
+
+Runtime correction commit `9d822c2e3c86a846918c0733e5a2148d7ff19385` passed **118 tests on Windows: 117 passed, zero failed, one expected POSIX-permissions skip**. Three RED/GREEN regressions cover session-key collisions, cleanup error preservation, and exact destructive-command / MultiEdit reminder keying. Both `doctor` and `agency-doctor` passed, with Agency execution disabled. These tests did not cover a fresh container install or an authenticated model request; the earlier container runs above remain historical evidence.

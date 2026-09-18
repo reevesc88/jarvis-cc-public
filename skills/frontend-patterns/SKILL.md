@@ -503,7 +503,7 @@ export class ErrorBoundary extends React.Component<
       return (
         <div className="error-fallback">
           <h2>Something went wrong</h2>
-          <p>{this.state.error?.message}</p>
+          <p>Please try again. Contact support if the problem continues.</p>
           <button onClick={() => this.setState({ hasError: false })}>
             Try again
           </button>

@@ -1,8 +1,9 @@
 # F6: Bind Agency attestations to an immutable board declaration
 
-- Status: PROPOSAL (design only, no code in this change)
-- Tracking: repo issue #5 ("Bind Agency opt-in/evidence attestations to an immutable board declaration")
-- Known limitation source: `integrations/agency-agents/README.md`, Safety model section ("KNOWN LIMITATION: none of these attestations is bound to a digest of the exact board declaration...")
+- Status: IMPLEMENTED. Both rollout branches are covered by the validator and tests; `contracts.json` selects Phase 1 compatibility mode (`boardBindingRequired: false`).
+- Historical context: the problem statement below describes the pre-F6 implementation, not a current unimplemented feature.
+- Original private-repository tracking: issue #5 (closed after implementation) ("Bind Agency opt-in/evidence attestations to an immutable board declaration")
+- Historical limitation source: `integrations/agency-agents/README.md`, Safety model section ("KNOWN LIMITATION: none of these attestations is bound to a digest of the exact board declaration...")
 - Code grounding: `scripts/lib/agency-orchestration.js` (`authenticatedControllerSnapshot`, `isPlainDataAttestation`, `isDeeplyPlainData`, `isPipelineOptInAttestation`, the evidence index inside `validateBoard`), `integrations/agency-agents/contracts.json`
 
 ## 1. Problem statement

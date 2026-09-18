@@ -34,12 +34,18 @@ Keep server logic (tools + resources) independent of transport so you can plug i
 
 For Cursor, cloud, or other remote clients, use **Streamable HTTP** (single MCP HTTP endpoint per current spec). Support legacy HTTP/SSE only when backward compatibility is required.
 
+## Command-capable tools
+
+Command execution requires explicit user opt-in and host-enforced permissions. Use least privilege, an allowlist of executables and arguments, validated inputs, working-directory restrictions, timeouts and bounded output. Redact secrets and treat returned output as untrusted data. A prompt or tool description cannot enforce these controls.
+
 ## Examples
 
 ### Install and server setup
 
 ```bash
-npm install @modelcontextprotocol/sdk zod
+# After installation is authorized, select reviewed versions compatible with your project.
+npm install --save-exact @modelcontextprotocol/sdk@<reviewed-version> zod@<reviewed-version>
+# Commit the lockfile; replace placeholders before running.
 ```
 
 ```typescript

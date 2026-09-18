@@ -108,10 +108,11 @@ if (!result.ok) {
 console.log(result.value.email)
 ```
 
-### API Error Handler (Next.js / Express)
+### API Error Handler (Next.js)
 
 ```typescript
 import { NextRequest, NextResponse } from 'next/server'
+import { z } from 'zod'
 
 function handleApiError(error: unknown): NextResponse {
   // Known application error
@@ -120,8 +121,7 @@ function handleApiError(error: unknown): NextResponse {
       {
         error: {
           code: error.code,
-          message: error.message,
-          ...(error.details ? { details: error.details } : {}),
+          message: ({ NOT_FOUND: 'Resource not found', VALIDATION_ERROR: 'Request validation failed', UNAUTHORIZED: 'Access denied' } as Record<string, string>)[error.code] ?? 'Request failed',
         },
       },
       { status: error.statusCode },
@@ -135,10 +135,7 @@ function handleApiError(error: unknown): NextResponse {
         error: {
           code: 'VALIDATION_ERROR',
           message: 'Request validation failed',
-          details: error.issues.map(i => ({
-            field: i.path.join('.'),
-            message: i.message,
-          })),
+          // Do not echo user-controlled paths, values, or custom validation messages.
         },
       },
       { status: 422 },
@@ -236,7 +233,7 @@ app = FastAPI()
 async def app_error_handler(request: Request, exc: AppError) -> JSONResponse:
     return JSONResponse(
         status_code=exc.status_code,
-        content={"error": {"code": exc.code, "message": str(exc)}},
+        content={"error": {"code": exc.code, "message": {"NOT_FOUND": "Resource not found", "VALIDATION_ERROR": "Request validation failed", "UNAUTHORIZED": "Access denied"}.get(exc.code, "Request failed")}},
     )
 
 @app.exception_handler(Exception)
@@ -283,7 +280,7 @@ func (h *Handler) GetUser(w http.ResponseWriter, r *http.Request) {
     if err != nil {
         switch {
         case errors.Is(err, domain.ErrNotFound):
-            writeError(w, http.StatusNotFound, "not_found", err.Error())
+            writeError(w, http.StatusNotFound, "not_found", "Resource not found")
         case errors.Is(err, domain.ErrUnauthorized):
             writeError(w, http.StatusForbidden, "forbidden", "Access denied")
         default:
@@ -336,7 +333,11 @@ async function withRetry<T>(
 }
 
 // Usage: retry transient network errors, not 4xx
-const data = await withRetry(() => fetch('/api/data').then(r => r.json()), {
+const data = await withRetry(async () => {
+  const response = await fetch('/api/data')
+  if (!response.ok) throw new AppError('Request failed', 'HTTP_ERROR', response.status)
+  return response.json()
+}, {
   maxAttempts: 3,
   retryIf: (error) => !(error instanceof AppError && error.statusCode < 500),
 })

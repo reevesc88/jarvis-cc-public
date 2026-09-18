@@ -152,7 +152,7 @@ Produce two outputs:
 - **Run dev server**: `npm run dev`
 - **Run tests**: `npm test`
 - **Run linter**: `npm run lint`
-- **Database migrations**: `npx prisma migrate dev`
+- **Database migrations**: `npx --no-install prisma migrate dev`
 - **Build for production**: `npm run build`
 
 ## Where to Look

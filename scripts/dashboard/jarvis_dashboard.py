@@ -275,7 +275,7 @@ class SkillsHubApp(tk.Tk):
                           padx=6, pady=2)
         badge.pack(side="left", padx=(12, 0), pady=(10, 0))
 
-        tk.Label(header, text="Your personal Claude Code setup, packaged.",
+        tk.Label(header, text="Your starter toolkit for Claude Code and Codex.",
                  bg=BG, fg=TEXT, font=(FONT_FAMILY, 12)).pack(anchor="w", pady=(6, 0))
 
         tk.Label(header, text=f"Scanning {PLUGIN_ROOT}", bg=BG, fg=TEXT_DIM,

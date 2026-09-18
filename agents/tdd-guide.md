@@ -31,9 +31,7 @@ You are a Test-Driven Development (TDD) specialist who ensures all code is devel
 Write a failing test that describes the expected behavior.
 
 ### 2. Run Test -- Verify it FAILS
-```bash
-npm test
-```
+Discover and run the current project's documented test command. Do not assume an npm project or install a runner implicitly.
 
 ### 3. Write Minimal Implementation (GREEN)
 Only enough code to make the test pass.
@@ -44,10 +42,7 @@ Only enough code to make the test pass.
 Remove duplication, improve names, optimize -- tests must stay green.
 
 ### 6. Verify Coverage
-```bash
-npm run test:coverage
-# Required: 80%+ branches, functions, lines, statements
-```
+Run coverage only when the project defines a coverage command. Apply its coverage requirements and report unavailable coverage honestly.
 
 ## Test Types Required
 

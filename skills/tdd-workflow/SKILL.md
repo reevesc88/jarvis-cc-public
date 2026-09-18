@@ -68,7 +68,10 @@ ALWAYS write tests first, then implement code to make tests pass.
 - UI interactions
 
 ### 4. Git Checkpoints
-- If the repository is under Git, create a checkpoint commit after each TDD stage
+
+Checkpoint commits and staging are conditional on existing user authorization. Inspect the working tree and stage only current-task files; never include unrelated work. Without commit authority, preserve RED/GREEN evidence in the report instead. Every checkpoint instruction below is conditional on this rule.
+
+- If the repository is under Git and checkpoint commits are authorized, create a checkpoint commit after each TDD stage
 - Do not squash or rewrite these checkpoint commits until the workflow is complete
 - Each checkpoint commit message must describe the stage and the exact evidence captured
 - Count only commits created on the current active branch for the current task
@@ -163,7 +166,7 @@ A test that was only written but not compiled and executed does not count as RED
 
 Do not edit production code until this RED state is confirmed.
 
-If the repository is under Git, create a checkpoint commit immediately after this stage is validated.
+If the repository is under Git and checkpoint commits are authorized, create a checkpoint commit immediately after this stage is validated.
 Recommended commit message format:
 - `test: add reproducer for <feature or bug>`
 - This commit may also serve as the RED validation checkpoint if the reproducer was compiled and executed and failed for the intended reason
@@ -179,7 +182,7 @@ export async function searchMarkets(query: string) {
 }
 ```
 
-If the repository is under Git, stage the minimal fix now but defer the checkpoint commit until GREEN is validated in Step 5.
+If the repository is under Git and checkpoint commits are authorized, stage the minimal fix now but defer the checkpoint commit until GREEN is validated in Step 5.
 
 ### Step 5: Run Tests Again
 ```bash
@@ -191,7 +194,7 @@ Rerun the same relevant test target after the fix and confirm the previously fai
 
 Only after a valid GREEN result may you proceed to refactor.
 
-If the repository is under Git, create a checkpoint commit immediately after GREEN is validated.
+If the repository is under Git and checkpoint commits are authorized, create a checkpoint commit immediately after GREEN is validated.
 Recommended commit message format:
 - `fix: <feature or bug>`
 - The fix commit may also serve as the GREEN validation checkpoint if the same relevant test target was rerun and passed
@@ -204,7 +207,7 @@ Improve code quality while keeping tests green:
 - Optimize performance
 - Enhance readability
 
-If the repository is under Git, create a checkpoint commit immediately after refactoring is complete and tests remain green.
+If the repository is under Git and checkpoint commits are authorized, create a checkpoint commit immediately after refactoring is complete and tests remain green.
 Recommended commit message format:
 - `refactor: clean up after <feature or bug> implementation`
 - Verify that this checkpoint commit is on the current active branch before considering the TDD cycle complete

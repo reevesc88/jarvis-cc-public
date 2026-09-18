@@ -376,8 +376,8 @@ vercel rollback
 # Railway: redeploy previous commit
 railway up --commit <previous-sha>
 
-# Database: rollback migration (if reversible)
-npx prisma migrate resolve --rolled-back <migration-name>
+# Database recovery: use a tested forward migration or an approved restore plan.
+# prisma migrate resolve --rolled-back changes bookkeeping only; it does not undo schema or data.
 ```
 
 ### Rollback Checklist

@@ -45,7 +45,7 @@ services:
   db:
     image: postgres:16-alpine
     ports:
-      - "5432:5432"
+      - "127.0.0.1:5432:5432"
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres

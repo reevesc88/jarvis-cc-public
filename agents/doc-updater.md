@@ -29,10 +29,12 @@ You are a documentation specialist focused on keeping codemaps and documentation
 
 ## Analysis Commands
 
+Use the current project's documented commands and installed local tools. These examples do not authorize installing missing packages; report unavailable tools. Inspect output paths and preserve existing files before generating documentation.
+
 ```bash
-npx tsx scripts/codemaps/generate.ts    # Generate codemaps (if the project has this script)
-npx madge --image graph.svg src/        # Dependency graph
-npx jsdoc2md src/**/*.ts                # Extract JSDoc
+npx --no-install tsx scripts/codemaps/generate.ts    # Generate codemaps (if the project has this script)
+npx --no-install madge --image graph.svg src/        # Dependency graph
+npx --no-install jsdoc2md src/**/*.ts                # Extract JSDoc
 ```
 
 ## Codemap Workflow

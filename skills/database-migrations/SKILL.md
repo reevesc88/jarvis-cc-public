@@ -133,16 +133,16 @@ END $$;
 
 ```bash
 # Create migration from schema changes
-npx prisma migrate dev --name add_user_avatar
+npx --no-install prisma migrate dev --name add_user_avatar
 
 # Apply pending migrations in production
-npx prisma migrate deploy
+npx --no-install prisma migrate deploy
 
 # Reset database (dev only)
-npx prisma migrate reset
+npx --no-install prisma migrate reset
 
 # Generate client after schema changes
-npx prisma generate
+npx --no-install prisma generate
 ```
 
 ### Schema Example
@@ -168,7 +168,7 @@ For operations Prisma cannot express (concurrent indexes, data backfills):
 
 ```bash
 # Create empty migration, then edit the SQL manually
-npx prisma migrate dev --create-only --name add_email_index
+npx --no-install prisma migrate dev --create-only --name add_email_index
 ```
 
 ```sql
@@ -183,13 +183,13 @@ CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_users_email ON users (email);
 
 ```bash
 # Generate migration from schema changes
-npx drizzle-kit generate
+npx --no-install drizzle-kit generate
 
 # Apply migrations
-npx drizzle-kit migrate
+npx --no-install drizzle-kit migrate
 
 # Push schema directly (dev only, no migration file)
-npx drizzle-kit push
+npx --no-install drizzle-kit push
 ```
 
 ### Schema Example

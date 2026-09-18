@@ -156,7 +156,7 @@ export async function deleteUser(userId: string, requesterId: string) {
     where: { id: requesterId }
   })
 
-  if (requester.role !== 'admin') {
+  if (!requester || requester.role !== 'admin') {
     return NextResponse.json(
       { error: 'Unauthorized' },
       { status: 403 }
@@ -273,6 +273,8 @@ res.setHeader('Set-Cookie',
 ### 7. Rate Limiting
 
 #### API Rate Limiting
+
+These in-memory examples are for single-process development only. Production across multiple instances or serverless workers requires a shared store and a tested failure policy.
 ```typescript
 import rateLimit from 'express-rate-limit'
 
@@ -376,6 +378,9 @@ async function verifyTransaction(transaction: Transaction) {
   }
 
   // Verify amount
+  if (!Number.isFinite(transaction.amount) || transaction.amount < 0) {
+    throw new Error('Invalid amount')
+  }
   if (transaction.amount > maxAmount) {
     throw new Error('Amount exceeds limit')
   }

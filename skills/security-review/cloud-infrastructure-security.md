@@ -26,11 +26,11 @@ This skill ensures cloud infrastructure, CI/CD pipelines, and deployment configu
 ```yaml
 # PASS: CORRECT: Minimal permissions
 iam_role:
-  permissions:
-    - s3:GetObject  # Only read access
-    - s3:ListBucket
-  resources:
-    - arn:aws:s3:::my-bucket/*  # Specific bucket only
+  statements:
+    - actions: [s3:ListBucket]
+      resources: ["arn:aws:s3:::my-bucket"]
+    - actions: [s3:GetObject]
+      resources: ["arn:aws:s3:::my-bucket/*"]
 
 # FAIL: WRONG: Overly broad permissions
 iam_role:
@@ -42,14 +42,7 @@ iam_role:
 
 #### Multi-Factor Authentication (MFA)
 
-```bash
-# ALWAYS enable MFA for root/admin accounts
-aws iam enable-mfa-device \
-  --user-name admin \
-  --serial-number arn:aws:iam::123456789:mfa/admin \
-  --authentication-code1 123456 \
-  --authentication-code2 789012
-```
+Enable MFA for privileged accounts through the provider's secure interactive enrollment flow. Do not place real MFA codes in command-line arguments, shell history, source files or logs. Example placeholders such as `<first-mfa-code>` and `<second-mfa-code>` are documentation only.
 
 #### Verification Steps
 

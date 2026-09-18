@@ -17,6 +17,8 @@ Invoke this skill:
 
 ## Verification Phases
 
+Discover the current project's documented scripts and installed tools first; examples below are conditional on those tools existing. Report unavailable checks without installing packages implicitly.
+
 Run each check directly and inspect its exit status before continuing. If output must be saved, capture it without replacing the check's status with a display/filter command.
 
 ### Phase 1: Build Verification
@@ -32,7 +34,7 @@ If build fails, STOP and fix before continuing.
 ### Phase 2: Type Check
 ```bash
 # TypeScript projects
-npx tsc --noEmit
+npx --no-install tsc --noEmit
 
 # Python projects
 pyright .
@@ -66,9 +68,9 @@ Report:
 
 ### Phase 5: Security Scan
 ```bash
-# Check for secrets
-grep -rn "sk-" --include="*.ts" --include="*.js" . 2>/dev/null | head -10
-grep -rn "api_key" --include="*.ts" --include="*.js" . 2>/dev/null | head -10
+# Candidate paths only; never print matching secret values. Prefer a redaction-aware scanner.
+rg -l "sk-" -g "*.ts" -g "*.js" .
+rg -l "api_key" -g "*.ts" -g "*.js" .
 
 # Check for console.log
 grep -rn "console.log" --include="*.ts" --include="*.tsx" src/ 2>/dev/null | head -10

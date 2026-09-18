@@ -103,7 +103,7 @@ class MarketService {
 // Request/response processing pipeline
 export function withAuth(handler: NextApiHandler): NextApiHandler {
   return async (req, res) => {
-    const token = req.headers.authorization?.replace('Bearer ', '')
+    const token = /^Bearer[ \t]+([^\s]+)$/i.exec(req.headers.authorization ?? '')?.[1]
 
     if (!token) {
       return res.status(401).json({ error: 'Unauthorized' })
@@ -197,7 +197,7 @@ BEGIN
 EXCEPTION
   WHEN OTHERS THEN
     -- Rollback happens automatically
-    RETURN jsonb_build_object('success', false, 'error', SQLERRM);
+    RAISE; -- Preserve failure; API boundary returns a generic error, never SQLERRM.
 END;
 $$;
 ```
@@ -365,7 +365,7 @@ export function verifyToken(token: string): JWTPayload {
 }
 
 export async function requireAuth(request: Request) {
-  const token = request.headers.get('authorization')?.replace('Bearer ', '')
+  const token = /^Bearer[ \t]+([^\s]+)$/i.exec(request.headers.get('authorization') ?? '')?.[1]
 
   if (!token) {
     throw new ApiError(401, 'Missing authorization token')
@@ -483,7 +483,15 @@ interface IndexJob {
 const indexQueue = new JobQueue<IndexJob>()
 
 export async function POST(request: Request) {
-  const { marketId } = await request.json()
+  let body: unknown
+  try { body = await request.json() } catch {
+    return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 })
+  }
+  if (!body || typeof body !== 'object' || !('marketId' in body) ||
+      typeof body.marketId !== 'string' || !body.marketId.trim()) {
+    return NextResponse.json({ error: 'marketId is required' }, { status: 400 })
+  }
+  const marketId = body.marketId.trim()
 
   // Add to queue instead of blocking
   await indexQueue.add({ marketId })

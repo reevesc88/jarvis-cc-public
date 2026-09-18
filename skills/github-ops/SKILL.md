@@ -5,6 +5,8 @@ description: GitHub repository operations, automation, and management. Issue tri
 
 # GitHub Operations
 
+Apply existing user authorization and repository policy to every mutation below. This skill grants no publishing, labeling, closing, or merging authority.
+
 Manage GitHub repositories with a focus on community health, CI reliability, and contributor experience.
 
 ## When to Activate
@@ -107,7 +109,10 @@ When preparing a release:
 
 ```bash
 # List merged PRs since last release
-gh pr list --state merged --base main --search "merged:>2026-03-01"
+last_release=$(gh release view --json publishedAt --jq .publishedAt) || exit 1
+[ -n "$last_release" ] || exit 1
+# Stop if no prior release exists; choose and document an initial release range.
+gh pr list --state merged --base main --search "merged:>$last_release"
 
 # Create a release
 gh release create v1.2.0 --title "v1.2.0" --generate-notes
@@ -125,11 +130,11 @@ gh api repos/{owner}/{repo}/dependabot/alerts --jq '.[].security_advisory.summar
 # Check secret scanning alerts
 gh api repos/{owner}/{repo}/secret-scanning/alerts --jq '.[].state'
 
-# Review and auto-merge safe dependency bumps
+# Review dependency bumps for possible auto-merge
 gh pr list --label "dependencies" --json number,title
 ```
 
-- Review and auto-merge safe dependency bumps
+- Enable auto-merge only within existing explicit user authority, after reviewing the complete current diff, substantive current-head reviews, passing required checks, and applicable branch protection. Otherwise propose it for approval.
 - Flag any critical/high severity alerts immediately
 - Check for new Dependabot alerts weekly at minimum
 

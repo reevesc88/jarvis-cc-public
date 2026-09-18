@@ -18,7 +18,7 @@ Before installing, you can ask your assistant:
 
 ## 1. Pick one useful role
 
-Start with **Frontend Developer** for a small UI task. Add **Reality Checker** for a separate review. These names exist in the upstream catalog. Installing a catalog does not run it; select only the roles useful to this task. [Frontend Developer](https://github.com/msitarzewski/agency-agents/blob/main/engineering/engineering-frontend-developer.md), [Reality Checker](https://github.com/msitarzewski/agency-agents/blob/main/testing/testing-reality-checker.md)
+Start with **Frontend Developer** for a small UI task. Add **Reality Checker** for a separate review. These names exist in the upstream catalog. Installing a catalog does not run it; select only the roles useful to this task. [Frontend Developer](https://github.com/msitarzewski/agency-agents/blob/ad9264e309bd5e5422c04784372d7841b1e5d604/engineering/engineering-frontend-developer.md), [Reality Checker](https://github.com/msitarzewski/agency-agents/blob/ad9264e309bd5e5422c04784372d7841b1e5d604/testing/testing-reality-checker.md)
 
 ## 2. Choose reference use or native agent installation
 
@@ -29,9 +29,13 @@ Start with **Frontend Developer** for a small UI task. Add **Reality Checker** f
 ```bash
 git clone https://github.com/msitarzewski/agency-agents.git
 cd agency-agents
+git checkout --detach ad9264e309bd5e5422c04784372d7841b1e5d604
+git rev-parse HEAD
 ```
 
-Choose only your host's block below. These commands intentionally install two roles, not the whole catalog. The installer supports the selection flags and Windows Git Bash. It can overwrite same-named installed files, so inspect the preview and existing target files before the actual install. [Official installer](https://github.com/msitarzewski/agency-agents/blob/main/scripts/install.sh)
+Confirm the printed SHA is `ad9264e309bd5e5422c04784372d7841b1e5d604` before running scripts. Stop if checkout or verification fails. Review the scripts and roles at that revision; a different revision requires a new review and user-approved installation scope.
+
+Choose only your host's block below. These commands intentionally install two roles, not the whole catalog. The installer supports the selection flags and Windows Git Bash. It can overwrite same-named installed files, so inspect the preview and existing target files before the actual install. [Official installer](https://github.com/msitarzewski/agency-agents/blob/ad9264e309bd5e5422c04784372d7841b1e5d604/scripts/install.sh)
 
 ### Claude Code
 
@@ -64,9 +68,9 @@ Then, when you want those selected roles installed:
 ./scripts/install.sh --tool codex --agent frontend-developer,reality-checker --no-interactive
 ```
 
-The default destination is `~/.codex/agents/`. Codex uses each TOML file's `name` field, such as `Frontend Developer`, for role selection. Generating files is not proof the host loaded them. [Official Codex integration](https://github.com/msitarzewski/agency-agents/blob/main/integrations/codex/README.md)
+The default destination is `~/.codex/agents/`. Codex uses each TOML file's `name` field, such as `Frontend Developer`, for role selection. Generating files is not proof the host loaded them. [Official Codex integration](https://github.com/msitarzewski/agency-agents/blob/ad9264e309bd5e5422c04784372d7841b1e5d604/integrations/codex/README.md)
 
-The selected slugs above come from the catalog names through upstream's own slug function. They are not Jarvis's registry identifiers, which include division prefixes. [Upstream naming helper](https://github.com/msitarzewski/agency-agents/blob/main/scripts/lib.sh)
+The selected slugs above come from the catalog names through upstream's own slug function. They are not Jarvis's registry identifiers, which include division prefixes. [Upstream naming helper](https://github.com/msitarzewski/agency-agents/blob/ad9264e309bd5e5422c04784372d7841b1e5d604/scripts/lib.sh)
 
 ## 3. Give the host one bounded request
 

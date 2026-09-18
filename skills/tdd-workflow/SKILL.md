@@ -547,9 +547,9 @@ test('updates user', () => {
 # GitHub Actions
 - name: Run Tests
   run: <coverage>
-- name: Upload Coverage
-  uses: codecov/codecov-action@v3
 ```
+
+Coverage upload is optional. Configure an approved provider separately and pin any action to a reviewed full commit SHA.
 
 ## Best Practices
 

@@ -445,10 +445,15 @@ function emitAbstain() {
   process.stdout.write(JSON.stringify({}));
 }
 
-function readStdinSync() {
+async function readStdin() {
   if (process.stdin && process.stdin.isTTY) return '';
   try {
-    return fs.readFileSync(0, 'utf8');
+    // Node may put pipe fd 0 in nonblocking mode; synchronous reads can lose
+    // a valid hook payload to EAGAIN before the host finishes writing it.
+    process.stdin.setEncoding('utf8');
+    let input = '';
+    for await (const chunk of process.stdin) input += chunk;
+    return input;
   } catch (_) {
     return '';
   }
@@ -518,9 +523,9 @@ function run(rawInput) {
   return emitAbstain();
 }
 
-function main() {
+async function main() {
   try {
-    const raw = readStdinSync();
+    const raw = await readStdin();
     run(raw);
   } catch (_) {
     // Last-resort guard: never let a bug in this hook block a tool call.

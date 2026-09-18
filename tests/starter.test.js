@@ -356,3 +356,10 @@ test('session transaction releases its lock on a publication error', t => {
  assert.equal(fs.existsSync(path.join(f.home,'.jarvis-cc/gateguard/state-failure.json.lock')),false);
  const retry=spawnSync(process.execPath,[hook],{env,encoding:'utf8',input});assert.equal(JSON.parse(retry.stdout).hookSpecificOutput.permissionDecision,'deny');
 });
+
+
+test('hook consumes piped input when synchronous stdin reads would return EAGAIN', t => {
+ const f=fixture(t);const loader=put(f.temp,'nonblocking-stdin.cjs',"const fs=require('fs');const read=fs.readFileSync;fs.readFileSync=(file,...args)=>{if(file===0){const error=new Error('nonblocking stdin not ready');error.code='EAGAIN';throw error;}return read(file,...args);};");
+ const result=spawnSync(process.execPath,['--require',loader,path.join(root,'scripts/hooks/fact-forcing-gate.js')],{env:{...f.env,JARVIS_GATEGUARD:'on'},encoding:'utf8',input:JSON.stringify({session_id:'piped-input',tool_name:'Edit',tool_input:{file_path:'piped.txt'}})});
+ assert.equal(result.status,0);assert.equal(JSON.parse(result.stdout).hookSpecificOutput?.permissionDecision,'deny');
+});

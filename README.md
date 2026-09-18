@@ -78,7 +78,7 @@ A useful first result is a short project explanation and a skill suggestion. The
 | Skills Hub | An optional local Python/Tkinter dashboard that scans the bundled catalog; it does not monitor live agents |
 | Agency validation | Checks policy and authenticated work-plan declarations; it does not execute workers |
 
-The Fact-Forcing Gate asks for facts on the first Edit, Write or MultiEdit of each exact file path. Later operations on that path are not denied by this hook, without comparing their content or tool type. For matching destructive Bash commands, the first exact command string is denied and a byte-identical retry is not denied by this hook. The gate does not verify explanations or grant authorization. It is a workflow aid, not a security sandbox; non-denial paths return no permission decision, so normal host permission checks still apply. Missing session identity or state-write failures also leave the decision to the host.
+The Fact-Forcing Gate asks for facts on the first Edit, Write or MultiEdit of each exact file path. Later operations on that path are not denied by this hook, without comparing their content or tool type. For matching destructive Bash commands, the first exact command string is denied and a byte-identical retry is not denied by this hook. The gate does not verify explanations or grant authorization. It is a workflow aid, not a security sandbox; non-denial paths return no permission decision, so normal host permission checks still apply. Missing session identity or state-write failures also leave the decision to the host. A busy or abandoned state lock waits for at most one second, then the reminder also leaves the decision to the host.
 
 ## Commands and diagnostics
 

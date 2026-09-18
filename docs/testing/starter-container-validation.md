@@ -122,3 +122,7 @@ The subsequent bounded hook correction ran **115 tests on Windows: 114 passed, z
 ## Final bounded release review regression run
 
 Runtime correction commit `9d822c2e3c86a846918c0733e5a2148d7ff19385` passed **118 tests on Windows: 117 passed, zero failed, one expected POSIX-permissions skip**. Three RED/GREEN regressions cover session-key collisions, cleanup error preservation, and exact destructive-command / MultiEdit reminder keying. Both `doctor` and `agency-doctor` passed, with Agency execution disabled. These tests did not cover a fresh container install or an authenticated model request; the earlier container runs above remain historical evidence.
+
+## Session-state concurrency correction regression run
+
+Runtime correction commit `80204b3c1f68acfc7f7baef261d86b9527100e21` passed **125 tests on Windows: 124 passed, zero failed, one expected POSIX-permissions skip**. Both `doctor` and `agency-doctor` passed, with Agency execution disabled. The hook serializes its read/check/write state transaction; a busy or abandoned lock waits for at most one second before the reminder abstains and leaves normal host permission checks in control. This local regression result does not establish a fresh container install, authenticated model request or release-head CI result. Earlier observations above retain their original commits and counts.

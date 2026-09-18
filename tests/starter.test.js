@@ -363,3 +363,13 @@ test('hook consumes piped input when synchronous stdin reads would return EAGAIN
  const result=spawnSync(process.execPath,['--require',loader,path.join(root,'scripts/hooks/fact-forcing-gate.js')],{env:{...f.env,JARVIS_GATEGUARD:'on'},encoding:'utf8',input:JSON.stringify({session_id:'piped-input',tool_name:'Edit',tool_input:{file_path:'piped.txt'}})});
  assert.equal(result.status,0);assert.equal(JSON.parse(result.stdout).hookSpecificOutput?.permissionDecision,'deny');
 });
+
+
+test('orphan memory filenames escape terminal direction controls', t => {
+ const f=fixture(t);const control=String.fromCharCode(0x202e);
+ put(f.home,'.claude/memory/'+control+'orphan.md','unlinked note');
+ put(f.home,'.claude/memory/MEMORY.md','No linked notes.');
+ const result=f.run(['memory-doctor']);assert.equal(result.status,1);
+ assert.match(result.stdout,/orphaned: memory\//);
+ assert.equal(result.stdout.includes(control),false);
+});

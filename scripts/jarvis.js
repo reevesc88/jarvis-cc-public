@@ -499,7 +499,7 @@ function cmdMemoryDoctor() {
     console.log(
       `[FLAG] ${orphan.orphaned.length} of ${orphan.checked} memory/*.md file(s) are NOT linked from memory/MEMORY.md:`
     );
-    for (const f of orphan.orphaned) console.log(`      orphaned: memory/${f}`);
+    for (const f of orphan.orphaned) console.log(`      orphaned: memory/${escapeTerminalLine(f)}`);
   } else {
     report(true, `all ${orphan.checked} memory/*.md file(s) are linked from memory/MEMORY.md`);
   }

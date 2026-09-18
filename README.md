@@ -130,9 +130,9 @@ Use the same installation scope when managing Claude plugins if you chose a non-
 
 ## What has been tested?
 
-Historical snapshots from the private development archive passed **107/107 tests in Linux containers on both Node 22.23.2 and 24.21.0**. In those historical snapshots, fresh offline local installations worked in Claude Code 2.1.260 and Codex CLI 0.154.0, with capabilities discovered by the real hosts. Claude also successfully invoked the neutral SessionStart hook during initialization.
+The released source passed **127/127 tests on both Node 22 and Node 24 in Linux CI**. Fresh Windows installations fetched this public GitHub repository with Git credential helpers disabled and discovered JARVIS 2.0.0 in Claude Code 2.1.260 and Codex CLI **0.155.0-alpha.2.6** (an alpha build). Both hosts exposed all 22 skills; Claude also exposed six commands and 16 agents. Codex discovered two enabled hooks marked untrusted, which does not prove hook execution.
 
-See the [container validation report](docs/testing/starter-container-validation.md) for the exact source commit, image IDs, isolation, commands, and limits. This was not a desktop VM or a live AI first-task conversation. Codex hook execution, PreToolUse invocation, sandbox enforcement, and public GitHub installation remain untested.
+Earlier snapshots separately passed **107/107 tests in Linux containers** and offline installation checks using Codex CLI 0.154.0. See the [validation report](docs/testing/starter-container-validation.md) for exact commits, versions and limits. The fresh public check sent no model request. An authenticated AI first-task conversation, desktop app execution and security sandbox enforcement were not tested.
 
 The checkout does not enable external MCP servers, live web search or permission overrides. Its `.codex/config.toml` declares optional local roles; choose any additional integrations in your own host configuration.
 

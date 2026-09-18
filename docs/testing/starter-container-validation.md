@@ -121,7 +121,7 @@ The subsequent bounded hook correction ran **115 tests on Windows: 114 passed, z
 
 ## Final bounded release review regression run
 
-Runtime correction commit `9d822c2e3c86a846918c0733e5a2148d7ff19385` passed **118 tests on Windows: 117 passed, zero failed, one expected POSIX-permissions skip**. Three RED/GREEN regressions cover session-key collisions, cleanup error preservation, and exact destructive-command / MultiEdit reminder keying. Both `doctor` and `agency-doctor` passed, with Agency execution disabled. These tests did not cover a fresh container install or an authenticated model request; the earlier container runs above remain historical evidence.
+Runtime correction commit `9d822c2e3c86a846918c0733e5a2148d7ff19385` passed **118 tests on Windows: 117 passed, zero failed, one expected POSIX-permissions skip**. Three RED/GREEN regressions cover quoted SQL client command detection, checked-operation activity refresh and expiry, and preservation of publication errors when cleanup also fails. Additional assertions cover exact destructive-command keying and first-touch MultiEdit reminders. Both `doctor` and `agency-doctor` passed, with Agency execution disabled. These tests did not cover a fresh container install or an authenticated model request; the earlier container runs above remain historical evidence.
 
 ## Session-state concurrency correction regression run
 

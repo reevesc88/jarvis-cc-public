@@ -232,6 +232,25 @@ function isDestructivePowerShellRemove(tokens) {
   return hasRecurse && hasForce;
 }
 
+// Recognize common SQL CLI argument forms only. This is not a shell parser:
+// substitutions, wrappers and indirect SQL inputs remain outside this reminder.
+function hasDestructiveSqlArgument(command) {
+  const segments = command.match(/(?:'(?:[^'\\]|\\.)*'|"(?:[^"\\]|\\.)*"|[^;|&\r\n])+/g) || [];
+  for (const segment of segments) {
+    const tokens = segment.match(/(?:'(?:[^'\\]|\\.)*'|"(?:[^"\\]|\\.)*"|[^\s'"])+/g) || [];
+    const client = baseCommand(tokens[0]);
+    const flag = client === 'psql' ? ['-c', '--command'] : ['mysql', 'mariadb'].includes(client) ? ['-e', '--execute'] : null;
+    if (!flag) continue;
+    for (let i = 1; i < tokens.length; i++) {
+      let sql;
+      if (flag.includes(tokens[i])) sql = tokens[++i];
+      else if (tokens[i].startsWith(flag[1] + '=')) sql = tokens[i].slice(flag[1].length + 1);
+      if (sql && SQL_DESTRUCTIVE_RE.test(sql)) return true;
+    }
+  }
+  return false;
+}
+
 /**
  * Decide whether a raw Bash/PowerShell command line contains a destructive
  * action this gate should challenge on first attempt.
@@ -245,7 +264,7 @@ function isDestructiveCommand(command) {
   const flattenedForSql = raw
     .replace(/'(?:[^'\\]|\\.)*'/g, "''")
     .replace(/"(?:[^"\\]|\\.)*"/g, '""');
-  if (SQL_DESTRUCTIVE_RE.test(flattenedForSql)) return true;
+  if (SQL_DESTRUCTIVE_RE.test(flattenedForSql) || hasDestructiveSqlArgument(raw)) return true;
 
   for (const segment of splitSegments(raw)) {
     if (isDestructiveFindExec(segment)) return true;
@@ -337,7 +356,7 @@ function saveState(stateFile, state) {
     let merged = Array.isArray(state.checked) ? state.checked.slice() : [];
     try {
       if (fs.existsSync(stateFile)) {
-        const onDisk = JSON.parse(fs.readFileSync(stateFile, 'utf8'));
+        const onDisk = loadState(stateFile);
         if (Array.isArray(onDisk.checked)) {
           merged = Array.from(new Set([...onDisk.checked, ...merged]));
         }
@@ -365,7 +384,9 @@ function saveState(stateFile, state) {
 
 function isChecked(stateFile, key) {
   const state = loadState(stateFile);
-  return state.checked.includes(key);
+  const checked = state.checked.includes(key);
+  if (checked) saveState(stateFile, state); // checked activity also renews the inactivity timer
+  return checked;
 }
 
 /**

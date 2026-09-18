@@ -421,7 +421,7 @@ function publishMissing(source, target) {
   } finally {
     if (ownsTemporary) {
       try { fs.unlinkSync(temporary); } catch (error) {
-        if (error.code !== 'ENOENT') throw error;
+        if (error.code !== 'ENOENT') console.log('[WARN] temporary export file left behind: ' + displayError(error));
       }
     }
   }

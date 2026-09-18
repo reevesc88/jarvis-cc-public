@@ -172,7 +172,7 @@ test('read-only bundled source exports completely without changing its permissio
   finally{fs.chmodSync(source,0o644);}
 });
 
-test('doctor rejects an unreadable required non-JSON resource', { skip: process.platform === 'win32' ? 'POSIX permissions require an unprivileged Linux run' : false }, t => {
+test('doctor rejects an unreadable required non-JSON resource', { skip: process.platform === 'win32' || process.getuid?.() === 0 ? 'POSIX permissions require an unprivileged Linux run' : false }, t => {
   assert.notEqual(process.getuid(), 0, 'Run this permission regression as an unprivileged user');
   const f = fixture(t); const repo = bundle(f.temp); const resource = path.join(repo, 'rules/common/security.md');
   fs.chmodSync(resource, 0o000);
@@ -261,6 +261,40 @@ test('gate abstains instead of granting permission on every non-denial path', t 
  assert.equal(run(edit).hookSpecificOutput.permissionDecision,'deny');assert.deepEqual(run(edit),{});
  const bash={session_id:edit.session_id,tool_name:'Bash',tool_input:{command:'rm -rf example.txt'}};
  assert.equal(run(bash).hookSpecificOutput.permissionDecision,'deny');assert.deepEqual(run(bash),{});
+ const otherBash={session_id:edit.session_id,tool_name:'Bash',tool_input:{command:'rm -rf other.txt'}};
+ assert.equal(run(otherBash).hookSpecificOutput.permissionDecision,'deny');
+ const multi={session_id:edit.session_id,tool_name:'MultiEdit',tool_input:{edits:[{file_path:'multi.txt'}]}};
+ assert.equal(run(multi).hookSpecificOutput.permissionDecision,'deny');assert.deepEqual(run(multi),{});
  const blocked=path.join(f.temp,'blocked-home');fs.mkdirSync(blocked);put(blocked,'.jarvis-cc','block state directory');
  assert.deepEqual(run(edit,{HOME:blocked,USERPROFILE:blocked}),{});
+});
+
+
+test('gate recognizes destructive SQL client arguments without gating quoted examples', () => {
+ const {isDestructiveCommand}=require('../scripts/hooks/fact-forcing-gate');
+ for(const command of ["psql -c 'DROP TABLE users'", 'mysql -e "TRUNCATE TABLE users"', "psql --command='DELETE FROM users'", "echo ready && mysql --execute='DROP TABLE users'"]) assert.equal(isDestructiveCommand(command),true,command);
+ for(const command of ["echo 'DROP TABLE users'", "printf 'psql -c DROP TABLE users'", "psql -c 'SELECT 1'", "echo 'mysql -e DELETE FROM users'"]) assert.equal(isDestructiveCommand(command),false,command);
+});
+
+test('checked hook operations refresh session activity but expired keys stay expired', t => {
+ const f=fixture(t); const env={...f.env};delete env.JARVIS_GATEGUARD;
+ const session='activity-test';const statePath=path.join(f.home,'.jarvis-cc/gateguard/state-'+session+'.json');
+ const invoke=(tool_name,tool_input)=>JSON.parse(spawnSync(process.execPath,[path.join(root,'scripts/hooks/fact-forcing-gate.js')],{env,encoding:'utf8',input:JSON.stringify({session_id:session,tool_name,tool_input})}).stdout);
+ for(const [tool,input] of [['Edit',{file_path:'active.txt'}],['Bash',{command:'rm -rf active.txt'}],['MultiEdit',{edits:[{file_path:'multi.txt'}]}]]) {
+  assert.equal(invoke(tool,input).hookSpecificOutput.permissionDecision,'deny');
+  const state=JSON.parse(fs.readFileSync(statePath));state.lastActive=Date.now()-29*60*1000;fs.writeFileSync(statePath,JSON.stringify(state));
+  assert.deepEqual(invoke(tool,input),{});
+  assert.ok(JSON.parse(fs.readFileSync(statePath)).lastActive>state.lastActive+60*1000);
+ }
+ const state=JSON.parse(fs.readFileSync(statePath));state.lastActive=Date.now()-31*60*1000;fs.writeFileSync(statePath,JSON.stringify(state));
+ assert.equal(invoke('Edit',{file_path:'new.txt'}).hookSpecificOutput.permissionDecision,'deny');
+ assert.equal(invoke('Edit',{file_path:'active.txt'}).hookSpecificOutput.permissionDecision,'deny');
+});
+
+test('publication failure retains its cause when temporary cleanup also fails', t => {
+ const f=fixture(t);
+ const loader=put(f.temp,'cleanup-failure.cjs',"const fs=require('fs');fs.linkSync=()=>{throw new Error('original publication failure');};fs.unlinkSync=()=>{const e=new Error('cleanup blocked');e.code='EPERM';throw e;};");
+ const result=spawnSync(process.execPath,['--require',loader,path.join(root,'scripts/jarvis.js'),'repair','--apply'],{env:f.env,encoding:'utf8'});
+ assert.equal(result.status,1);assert.match(result.stdout,/original publication failure/);assert.match(result.stdout,/WARN.*cleanup blocked/);
+ assert.equal(fs.existsSync(path.join(f.home,'.claude/CLAUDE.md')),false);
 });

@@ -9,7 +9,7 @@
             "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/hooks/fact-forcing-gate.js\""
           }
         ],
-        "description": "jarvis-cc Fact-Forcing Gate: deny the first destructive Bash command or first Edit/Write/MultiEdit of a file this session, allow a byte-identical retry. Standalone fallback for ECC's GateGuard.",
+        "description": "jarvis-cc Fact-Forcing Gate: first-touch file_path reminders for Edit/Write/MultiEdit and exact-command retry reminders for destructive Bash. Later operations abstain and normal host permissions still apply.",
         "id": "pre:jarvis-cc:fact-forcing-gate"
       }
     ],

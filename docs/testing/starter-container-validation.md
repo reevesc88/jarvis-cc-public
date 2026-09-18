@@ -1,6 +1,18 @@
-> Historical pre-release evidence: the source hashes below identify snapshots in the private development archive. They are not commits available from this clean public repository. Use the current checkout commands below to test the public source; do not attempt to check out those historical hashes here.
+# Starter validation: public installation and historical containers
 
-# Neutral starter container validation
+## Public release verification, 18 September 2026
+
+Public source commit: [99edd5b38a2a1901d8bcef9b2e1ce8607c135a16](https://github.com/reevesc88/jarvis-cc-public/commit/99edd5b38a2a1901d8bcef9b2e1ce8607c135a16), plugin **2.0.0**.
+
+- **Linux CI:** the reviewed head **5fc2ddc** has the same source tree as that release commit. [Run 35340864741](https://github.com/reevesc88/jarvis-cc-public/actions/runs/35340864741) passed **127/127 tests on Node 22 and 127/127 on Node 24**, with zero failures or skips in either job. This is CI evidence, separate from the historical container matrix below.
+- **Fresh public installation:** native Windows checks used separate temporary homes and an allowlisted environment, disabled Git system/global configuration, credential helpers and interactive prompts, and copied no authentication files. Both hosts fetched the public repository; installed source hashes matched the release commit. This demonstrates installation without GitHub sign-in in that test configuration, not an audit or isolation guarantee for every operating-system credential store.
+- **Claude Code 2.1.260:** installation and initialization discovered exactly **22 JARVIS skills, six commands and 16 agents**.
+- **Codex CLI 0.155.0-alpha.2.6:** installation and app-server discovery found exactly **28 enabled JARVIS skill entries: 22 bundled skills and six command-backed entries**, plus **two enabled hooks marked untrusted**. The command-backed entries were agency-doctor, dashboard, doctor, list-installed, memory-doctor and repair. Trust was not granted. Discovery does not prove hook execution. This alpha version is distinct from the historical stable 0.154.0 container check below.
+- **Limits:** no authenticated model task or model request was performed. Desktop application execution and security sandbox enforcement were not tested. These checks validate installation and capability discovery, not completion of the README's conversational first task.
+
+The following sections retain earlier observations and their original source hashes and counts. Private-development hashes identify archive snapshots and cannot be checked out from this clean public repository; public-release commits are linked above.
+
+## Historical container snapshot
 
 Tested on 2026-09-17 UTC against source commit
 `38d377a0e8352ea78cb6e2cc4884c89c7b61fca2` (plugin 2.0.0).

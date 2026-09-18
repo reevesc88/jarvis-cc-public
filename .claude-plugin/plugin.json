@@ -1,0 +1,18 @@
+{
+  "name": "jarvis-cc",
+  "version": "2.0.0",
+  "description": "A welcoming toolkit for Claude Code and Codex: practical skills, specialist agent prompts, hooks, and read-only setup checks.",
+  "author": {
+    "name": "Calum Reeves"
+  },
+  "license": "MIT",
+  "keywords": [
+    "claude-code",
+    "codex",
+    "skills",
+    "agents",
+    "hooks",
+    "diagnostics",
+    "starter-toolkit"
+  ]
+}

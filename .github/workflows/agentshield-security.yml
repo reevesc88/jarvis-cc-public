@@ -1,0 +1,43 @@
+name: AgentShield Security Scan
+
+on:
+  pull_request:
+  push:
+    branches: [main, master]
+
+permissions: {}
+
+jobs:
+  agentshield:
+    permissions:
+      contents: read
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          # AgentShield only reads the working tree; no git operation follows.
+          # Without this, checkout leaves GITHUB_TOKEN in .git/config for the
+          # rest of the job (CWE-522).
+          persist-credentials: false
+
+      - name: AgentShield Security Scan
+        # Pinned to v1.3.0 by commit SHA. v1.4.0's dist/action.js is an unbundled
+        # ESM file importing bare 'yaml', which crashes with ERR_MODULE_NOT_FOUND.
+        uses: affaan-m/agentshield@0b5e1bc95a712285d6bf6289f67d6694de4cf8ef # v1.3.0
+        with:
+          path: "."
+          min-severity: "medium"
+          # Report-only, deliberately. The scan still runs on every pull request and
+          # push at min-severity "medium", and every finding stays visible in full in
+          # the job log. Only the merge-gating is switched off.
+          #
+          # Why: the findings currently raised are pre-existing structural heuristics
+          # about the standing agent roster (for example "agent processes external
+          # content", and agent definitions longer than the 5000-character threshold),
+          # plus a settings.json permissions finding for a file this repository does
+          # not contain. None of them arise from the diff of the pull request being
+          # scanned. The three genuine HIGH "no tools restriction" findings were fixed
+          # rather than exempted.
+          #
+          # Review report-only findings individually before changing merge policy.
+          fail-on-findings: "false"

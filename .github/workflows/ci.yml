@@ -1,0 +1,88 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+# Deny-all default. The single job below opts in to read-only repository access.
+permissions: {}
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    # F6 (docs/proposals/f6-board-declaration-binding.md, Section 7 item 3)
+    # requires the golden digest vectors in tests/agency-orchestration.test.js
+    # to run on two Node majors so cross-version byte-encoding drift is
+    # actually exercised before release, not just asserted stable within a
+    # single runtime. 22 is the current Maintenance LTS, 24 is the current
+    # Active LTS; fail-fast is off so a failure on one version doesn't hide
+    # the result on the other, which is the whole point of this matrix.
+    strategy:
+      fail-fast: false
+      matrix:
+        node-version: ['22', '24']
+
+    permissions:
+      contents: read # checkout only
+
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          # This job only reads the working tree and runs node against it; no
+          # git operation follows. Without this, checkout leaves GITHUB_TOKEN
+          # in .git/config for the rest of the job (CWE-522).
+          persist-credentials: false
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: ${{ matrix.node-version }}
+
+      # jarvis-cc ships no package.json and has no runtime dependencies. Every
+      # check below runs on the Node standard library alone, so there is
+      # deliberately no install step.
+      - name: Syntax check the CLI entrypoint
+        run: node --check scripts/jarvis.js
+
+      - name: Syntax check the orchestration library
+        run: node --check scripts/lib/agency-orchestration.js
+
+      - name: Run neutral starter tests
+        run: node --test tests/starter.test.js
+
+      - name: Run the orchestration test suite
+        run: node --test tests/agency-orchestration.test.js
+
+      # Policy-only run: no board supplied, so the doctor validates the shipped
+      # policy and prints discovered candidates. This must exit 0.
+      - name: agency-doctor policy check
+        run: node scripts/jarvis.js agency-doctor
+
+      # Fail-closed regression guard. The doctor CLI cannot mint controller
+      # attestations or supply an authentication verifier, so an enabled board
+      # is correctly REJECTED without a trusted host controller - the bundled
+      # valid-board example included. A bare "any nonzero exit passes" check is
+      # too weak: a missing file, a crash, or a wrong-reason rejection also exits
+      # nonzero and would pass silently. This step therefore asserts BOTH that
+      # the exit code is exactly 1 AND that the rejection is for the expected
+      # reason (the unattested opt-in), so exit 0, any other nonzero code, or a
+      # missing diagnostic all fail the build.
+      - name: agency-doctor must reject an unattested board
+        shell: bash
+        run: |
+          output="$(node scripts/jarvis.js agency-doctor evals/agency-orchestration/valid-board.json 2>&1)" && status=0 || status=$?
+          printf '%s\n' "$output"
+          if [ "$status" -eq 0 ]; then
+            echo "::error::agency-doctor exited 0 on an unattested board; the fail-closed gate has regressed"
+            exit 1
+          fi
+          if [ "$status" -ne 1 ]; then
+            echo "::error::agency-doctor exited $status (expected exactly 1); the board was rejected for the wrong reason, e.g. a missing file or a crash"
+            exit 1
+          fi
+          if ! printf '%s\n' "$output" | grep -qF "trusted controller opt-in attestation is required"; then
+            echo "::error::agency-doctor exited 1 but did not print the expected opt-in rejection diagnostic; the fail-closed reason is not the one this gate asserts"
+            exit 1
+          fi
+          echo "agency-doctor rejected the unattested board with exit 1 and the expected diagnostic, as designed"

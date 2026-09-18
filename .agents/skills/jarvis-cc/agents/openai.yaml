@@ -1,0 +1,6 @@
+interface:
+  display_name: "Jarvis CC"
+  short_description: "Repo-specific patterns and workflows for jarvis-cc"
+  default_prompt: "Use the jarvis-cc repo skill to follow existing architecture, testing, and workflow conventions."
+policy:
+  allow_implicit_invocation: true

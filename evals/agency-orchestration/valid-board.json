@@ -1,0 +1,70 @@
+{
+  "schemaVersion": 1,
+  "enabled": true,
+  "pipelineId": "travis-bounded-slice",
+  "depth": 1,
+  "correctionCycles": 0,
+  "pipelineMinutes": 30,
+  "cards": [
+    {
+      "id": "prioritize",
+      "title": "Confirm the bounded slice and dependencies",
+      "status": "done",
+      "role": "product-sprint-prioritizer",
+      "mode": "researcher",
+      "dependencies": [],
+      "attempts": 1,
+      "canSpawn": false,
+      "stopCondition": "Return one dependency-ordered slice.",
+      "evidence": ["scope-packet-recorded"],
+      "budget": {
+        "turns": 4,
+        "toolCalls": 10,
+        "workerMinutes": 5,
+        "inputTokens": 4000,
+        "outputTokens": 1000,
+        "handoffTokens": 120
+      }
+    },
+    {
+      "id": "implement",
+      "title": "Implement the approved slice",
+      "status": "in_progress",
+      "role": "engineering-backend-architect",
+      "mode": "writer",
+      "dependencies": ["prioritize"],
+      "attempts": 1,
+      "canSpawn": false,
+      "stopCondition": "Focused tests pass and exact changed files are reported.",
+      "evidence": [],
+      "budget": {
+        "turns": 12,
+        "toolCalls": 40,
+        "workerMinutes": 10,
+        "inputTokens": 12000,
+        "outputTokens": 4000,
+        "handoffTokens": 200
+      }
+    },
+    {
+      "id": "review",
+      "title": "Review the exact implementation",
+      "status": "ready",
+      "role": "testing-reality-checker",
+      "mode": "reviewer",
+      "dependencies": ["implement"],
+      "attempts": 0,
+      "canSpawn": false,
+      "stopCondition": "Return PASS or evidence-backed findings.",
+      "evidence": [],
+      "budget": {
+        "turns": 6,
+        "toolCalls": 20,
+        "workerMinutes": 10,
+        "inputTokens": 6000,
+        "outputTokens": 2000,
+        "handoffTokens": 200
+      }
+    }
+  ]
+}

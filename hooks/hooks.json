@@ -1,0 +1,29 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash|Edit|Write|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/hooks/fact-forcing-gate.js\""
+          }
+        ],
+        "description": "jarvis-cc Fact-Forcing Gate: first-touch file_path reminders for Edit/Write/MultiEdit and exact-command retry reminders for destructive Bash. Later operations abstain and normal host permissions still apply.",
+        "id": "pre:jarvis-cc:fact-forcing-gate"
+      }
+    ],
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/hooks/session-context-fallback.js\""
+          }
+        ],
+        "description": "JARVIS neutral starter context: additive guidance without reading, replacing, or restoring user configuration.",
+        "id": "session-start:jarvis-cc:context-fallback"
+      }
+    ]
+  }
+}

@@ -7,6 +7,9 @@ metadata:
 
 # Database Migration Patterns
 
+Before invoking a CLI, inspect the project manifest and resolve its existing local executable. The `./node_modules/.bin/` examples below are for Bash and fail if the executable is absent; do not fall back to a registry runner. In PowerShell, use the verified `.cmd` shim where applicable. For other package layouts, inspect and use an existing project script or resolved executable. A local executable can itself perform network or write operations; its location grants no authorization for those actions.
+
+
 Safe, reversible database schema changes for production systems.
 
 ## When to Activate
@@ -133,16 +136,16 @@ END $$;
 
 ```bash
 # Create migration from schema changes
-npx --no-install prisma migrate dev --name add_user_avatar
+./node_modules/.bin/prisma migrate dev --name add_user_avatar
 
 # Apply pending migrations in production
-npx --no-install prisma migrate deploy
+./node_modules/.bin/prisma migrate deploy
 
 # Reset database (dev only)
-npx --no-install prisma migrate reset
+./node_modules/.bin/prisma migrate reset
 
 # Generate client after schema changes
-npx --no-install prisma generate
+./node_modules/.bin/prisma generate
 ```
 
 ### Schema Example
@@ -168,7 +171,7 @@ For operations Prisma cannot express (concurrent indexes, data backfills):
 
 ```bash
 # Create empty migration, then edit the SQL manually
-npx --no-install prisma migrate dev --create-only --name add_email_index
+./node_modules/.bin/prisma migrate dev --create-only --name add_email_index
 ```
 
 ```sql
@@ -183,13 +186,13 @@ CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_users_email ON users (email);
 
 ```bash
 # Generate migration from schema changes
-npx --no-install drizzle-kit generate
+./node_modules/.bin/drizzle-kit generate
 
 # Apply migrations
-npx --no-install drizzle-kit migrate
+./node_modules/.bin/drizzle-kit migrate
 
 # Push schema directly (dev only, no migration file)
-npx --no-install drizzle-kit push
+./node_modules/.bin/drizzle-kit push
 ```
 
 ### Schema Example

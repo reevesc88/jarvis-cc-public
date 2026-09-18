@@ -5,6 +5,9 @@ description: "A comprehensive verification system for Claude Code sessions."
 
 # Verification Loop Skill
 
+Before invoking a CLI, inspect the project manifest and resolve its existing local executable. The `./node_modules/.bin/` examples below are for Bash and fail if the executable is absent; do not fall back to a registry runner. In PowerShell, use the verified `.cmd` shim where applicable. For other package layouts, inspect and use an existing project script or resolved executable. A local executable can itself perform network or write operations; its location grants no authorization for those actions.
+
+
 A comprehensive verification system for Claude Code sessions.
 
 ## When to Use
@@ -34,7 +37,7 @@ If build fails, STOP and fix before continuing.
 ### Phase 2: Type Check
 ```bash
 # TypeScript projects
-npx --no-install tsc --noEmit
+./node_modules/.bin/tsc --noEmit
 
 # Python projects
 pyright .
@@ -69,8 +72,13 @@ Report:
 ### Phase 5: Security Scan
 ```bash
 # Candidate paths only; never print matching secret values. Prefer a redaction-aware scanner.
-rg -l "sk-" -g "*.ts" -g "*.js" .
-rg -l "api_key" -g "*.ts" -g "*.js" .
+if rg -l -e "sk-" -e "api_key" -g "*.ts" -g "*.js" .; then
+  printf 'Review the candidate paths using a redaction-aware scanner.\n'
+else
+  scan_status=$?
+  if [ "$scan_status" -ne 1 ]; then exit "$scan_status"; fi
+  printf 'No candidate matches.\n'
+fi
 
 # Check for console.log
 grep -rn "console.log" --include="*.ts" --include="*.tsx" src/ 2>/dev/null | head -10

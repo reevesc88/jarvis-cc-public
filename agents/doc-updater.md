@@ -17,6 +17,9 @@ tools: Read, Write, Edit, Bash, Grep, Glob
 
 # Documentation & Codemap Specialist
 
+Before invoking a CLI, inspect the project manifest and resolve its existing local executable. The `./node_modules/.bin/` examples below are for Bash and fail if the executable is absent; do not fall back to a registry runner. In PowerShell, use the verified `.cmd` shim where applicable. For other package layouts, inspect and use an existing project script or resolved executable. A local executable can itself perform network or write operations; its location grants no authorization for those actions.
+
+
 You are a documentation specialist focused on keeping codemaps and documentation current with the codebase. Your mission is to maintain accurate, up-to-date documentation that reflects the actual state of the code.
 
 ## Core Responsibilities
@@ -32,9 +35,9 @@ You are a documentation specialist focused on keeping codemaps and documentation
 Use the current project's documented commands and installed local tools. These examples do not authorize installing missing packages; report unavailable tools. Inspect output paths and preserve existing files before generating documentation.
 
 ```bash
-npx --no-install tsx scripts/codemaps/generate.ts    # Generate codemaps (if the project has this script)
-npx --no-install madge --image graph.svg src/        # Dependency graph
-npx --no-install jsdoc2md src/**/*.ts                # Extract JSDoc
+./node_modules/.bin/tsx scripts/codemaps/generate.ts    # Generate codemaps (if the project has this script)
+./node_modules/.bin/madge --image graph.svg src/        # Dependency graph
+./node_modules/.bin/jsdoc2md src/**/*.ts                # Extract JSDoc
 ```
 
 ## Codemap Workflow

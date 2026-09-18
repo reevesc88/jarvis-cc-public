@@ -5,6 +5,9 @@ description: Analyze an unfamiliar codebase and generate a structured onboarding
 
 # Codebase Onboarding
 
+Before invoking a CLI, inspect the project manifest and resolve its existing local executable. The `./node_modules/.bin/` examples below are for Bash and fail if the executable is absent; do not fall back to a registry runner. In PowerShell, use the verified `.cmd` shim where applicable. For other package layouts, inspect and use an existing project script or resolved executable. A local executable can itself perform network or write operations; its location grants no authorization for those actions.
+
+
 Systematically analyze an unfamiliar codebase and produce a structured onboarding guide. Designed for developers joining a new project or setting up Claude Code in an existing repo for the first time.
 
 ## When to Use
@@ -152,7 +155,7 @@ Produce two outputs:
 - **Run dev server**: `npm run dev`
 - **Run tests**: `npm test`
 - **Run linter**: `npm run lint`
-- **Database migrations**: `npx --no-install prisma migrate dev`
+- **Database migrations**: `./node_modules/.bin/prisma migrate dev`
 - **Build for production**: `npm run build`
 
 ## Where to Look

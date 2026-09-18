@@ -5,6 +5,9 @@ description: Playwright E2E testing patterns, Page Object Model, configuration, 
 
 # E2E Testing Patterns
 
+Before invoking a CLI, inspect the project manifest and resolve its existing local executable. The `./node_modules/.bin/` examples below are for Bash and fail if the executable is absent; do not fall back to a registry runner. In PowerShell, use the verified `.cmd` shim where applicable. For other package layouts, inspect and use an existing project script or resolved executable. A local executable can itself perform network or write operations; its location grants no authorization for those actions.
+
+
 Comprehensive Playwright patterns for building stable, fast, and maintainable E2E test suites.
 
 ## Test File Organization
@@ -155,8 +158,8 @@ test('conditional skip', async ({ page }) => {
 ### Identify Flakiness
 
 ```bash
-npx --no-install playwright test tests/search.spec.ts --repeat-each=10
-npx --no-install playwright test tests/search.spec.ts --retries=3
+./node_modules/.bin/playwright test tests/search.spec.ts --repeat-each=10
+./node_modules/.bin/playwright test tests/search.spec.ts --retries=3
 ```
 
 ### Common Causes & Fixes
@@ -239,8 +242,8 @@ jobs:
         with:
           node-version: 20
       - run: npm ci
-      - run: npx --no-install playwright install --with-deps
-      - run: npx --no-install playwright test
+      - run: ./node_modules/.bin/playwright install --with-deps
+      - run: ./node_modules/.bin/playwright test
         env:
           BASE_URL: ${{ vars.STAGING_URL }}
       - uses: actions/upload-artifact@v4

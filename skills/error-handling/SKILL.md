@@ -121,10 +121,15 @@ function handleApiError(error: unknown): NextResponse {
       {
         error: {
           code: error.code,
-          message: ({ NOT_FOUND: 'Resource not found', VALIDATION_ERROR: 'Request validation failed', UNAUTHORIZED: 'Access denied' } as Record<string, string>)[error.code] ?? 'Request failed',
+          message: ({ NOT_FOUND: 'Resource not found', VALIDATION_ERROR: 'Request validation failed', UNAUTHORIZED: 'Access denied', RATE_LIMITED: 'Too many requests; try again later' } as Record<string, string>)[error.code] ?? 'Request failed',
         },
       },
-      { status: error.statusCode },
+      {
+        status: error.statusCode,
+        ...(error instanceof RateLimitError && Number.isFinite(error.retryAfterMs) && error.retryAfterMs >= 0
+          ? { headers: { 'Retry-After': String(Math.ceil(error.retryAfterMs / 1000)) } }
+          : {}),
+      },
     )
   }
 

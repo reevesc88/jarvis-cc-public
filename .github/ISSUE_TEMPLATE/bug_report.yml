@@ -1,0 +1,50 @@
+name: Bug report
+description: Tell us what went wrong with JARVIS or its instructions.
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for helping. Plain English is fine, and "not sure" is a useful answer.
+        This report is public. Remove tokens, passwords, private paths, account details and personal information from text and screenshots.
+        For a security vulnerability, use [private reporting](https://github.com/reevesc88/jarvis-cc-public/security/advisories/new) instead.
+  - type: input
+    id: version
+    attributes:
+      label: JARVIS version
+      description: Use the version shown in your host's installed plugins list. Write "not sure" if you cannot find it.
+      placeholder: "For example: 2.0.0"
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: Host, operating system and versions
+      description: Claude Code or Codex? Windows, macOS or Linux? Include the host and Node versions if known; do not share account or login details.
+      placeholder: "For example: Codex CLI, Windows 11, host version ..., Node 24"
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: What did you do?
+      description: List the smallest steps, command or documentation link needed to see the problem. Use made-up data.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What did you expect?
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: What actually happened?
+      description: Include the exact error if useful, after removing sensitive information.
+    validations:
+      required: true
+  - type: textarea
+    id: context
+    attributes:
+      label: Anything else? (optional)
+      description: A sanitised screenshot or related issue can help. Say if you already tried a suggested fix.

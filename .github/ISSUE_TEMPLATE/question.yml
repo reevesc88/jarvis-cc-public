@@ -1,0 +1,27 @@
+name: Question or help
+description: Ask about using JARVIS or request a private contact without sharing details.
+body:
+  - type: markdown
+    attributes:
+      value: |
+        All experience levels are welcome. This issue, your GitHub username and everything you submit are public.
+        Remove passwords, tokens, private paths, account details, personal documents and identifying information from text and screenshots.
+        For a security vulnerability, use [private reporting](https://github.com/reevesc88/jarvis-cc-public/security/advisories/new) instead. Do not describe a vulnerability here.
+        If private reporting is unavailable, write only "Private security contact requested" in the title and question below. Leave optional context blank; share details only after a private channel is agreed.
+  - type: textarea
+    id: question
+    attributes:
+      label: Your question
+      description: Ask in plain English. For a private contact request, write only "Private security contact requested" without technical details or sensitive information.
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: Host and version (optional)
+      description: For general help, Claude Code or Codex and the JARVIS version may help. Leave this blank for private contact requests.
+  - type: textarea
+    id: context
+    attributes:
+      label: Safe context (optional)
+      description: For general help, include a documentation link or a made-up example. Remove sensitive information. Leave this blank for private contact requests.

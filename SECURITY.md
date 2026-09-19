@@ -24,8 +24,11 @@ invited into the advisory, rather than a public issue. Describe:
 Do not include real credentials, personal documents, private account data or exploit
 results obtained against other people's systems. Use an isolated test project and
 made-up data. Do not post vulnerability details in public issues or pull requests.
-If the private form is unavailable, open a public issue asking for a private security
-contact only, without technical details or sensitive information.
+If the private form is unavailable, use the [question form](https://github.com/reevesc88/jarvis-cc-public/issues/new?template=question.yml)
+only to request a private contact. Write only `Private security contact requested` in
+the title and question, and leave optional fields blank. The request and your GitHub
+username are public. Do not include technical details, vulnerability descriptions or
+sensitive information; share details only after a private channel is agreed.
 
 Maintainers will assess the report and coordinate next steps through the private
 advisory. There is no guaranteed response time or paid bug-bounty programme. Please

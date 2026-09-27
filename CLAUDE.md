@@ -14,13 +14,3 @@ it grants no permissions, replaces no personal settings, and establishes no iden
 - Memory is optional. Save only with consent to a user-chosen location. Do not scan
   unrelated transcripts, initialize repositories, or create memory at startup.
 - Offer a read-only first task and a small, reviewable next step.
-
-
-## Session binding (mandatory, all agents)
-
-This repo is part of the reevesc88 fleet. The source of truth for fleet state is github.com/reevesc88/conductor-brain.
-
-- Before any work session in this repo: read conductor-brain `MEMORY.md` (recent decisions) and `agents/registry.md` (registered clones and agents).
-- After any session that changes code or state: write a session entry to conductor-brain (`MEMORY.md` session log, or `agents/outputs/<agent>-<task>.md`) naming repo, task, branch and outcome.
-- Never create a new clone or worktree without registering it in conductor-brain `agents/registry.md`.
-- Escalate to Cal before: money, external communications, irreversible deletes, conflicts with a locked decision, business direction on Travis.

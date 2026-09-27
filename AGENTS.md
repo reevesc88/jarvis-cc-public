@@ -17,3 +17,13 @@ For normal specialist use, follow `docs/agency-agents-quickstart.md`. Agency Age
 - Cost ceilings are advisory unless a purpose-specific accounting attestation binds a usage-record digest and is authenticated by the controller. Time, turn, tool-call, token, and card ceilings are mandatory controller stop conditions, but the doctor does not enforce a live runtime.
 
 Run `node --test tests/agency-orchestration.test.js` and `node scripts/jarvis.js agency-doctor` after changing this feature.
+
+
+## Session binding (mandatory, all agents)
+
+This repo is part of the reevesc88 fleet. The source of truth for fleet state is github.com/reevesc88/conductor-brain.
+
+- Before any work session in this repo: read conductor-brain `MEMORY.md` (recent decisions) and `agents/registry.md` (registered clones and agents).
+- After any session that changes code or state: write a session entry to conductor-brain (`MEMORY.md` session log, or `agents/outputs/<agent>-<task>.md`) naming repo, task, branch and outcome.
+- Never create a new clone or worktree without registering it in conductor-brain `agents/registry.md`.
+- Escalate to Cal before: money, external communications, irreversible deletes, conflicts with a locked decision, business direction on Travis.

@@ -232,19 +232,28 @@ function isDestructivePowerShellRemove(tokens) {
   return hasRecurse && hasForce;
 }
 
-// Recognize common SQL CLI argument forms only. This is not a shell parser:
-// Only plain env launchers/assignments are recognized; substitutions, other wrappers
-// and indirect SQL inputs remain outside this reminder.
+const SQL_CLIENTS = new Set(['psql', 'mysql', 'mariadb', 'sqlite3', 'sqlcmd', 'sqlplus', 'wrangler']);
+const SEGMENT_RE = /(?:'(?:[^'\\]|\\.)*'|"(?:[^"\\]|\\.)*"|[^;|&\r\n])+/g;
+const TOKEN_RE = /(?:'(?:[^'\\]|\\.)*'|"(?:[^"\\]|\\.)*"|[^\s'"])+/g;
+const ENV_ASSIGNMENT_RE = /^[A-Za-z_][A-Za-z0-9_]*=/;
+
+// One shared parse of a command segment: strips leading env assignments and a
+// plain `env` launcher, then returns the client name and its remaining tokens.
+// Substitutions, other wrappers and indirect inputs are not followed.
+function segmentClient(segment) {
+  const tokens = segment.match(TOKEN_RE) || [];
+  while (ENV_ASSIGNMENT_RE.test(tokens[0] || '')) tokens.shift();
+  if (baseCommand(tokens[0]) === 'env') {
+    tokens.shift();
+    while (ENV_ASSIGNMENT_RE.test(tokens[0] || '')) tokens.shift();
+  }
+  return { client: baseCommand(tokens[0]), tokens };
+}
+
+// Recognize common SQL CLI argument forms only. This is not a shell parser.
 function hasDestructiveSqlArgument(command) {
-  const segments = command.match(/(?:'(?:[^'\\]|\\.)*'|"(?:[^"\\]|\\.)*"|[^;|&\r\n])+/g) || [];
-  for (const segment of segments) {
-    const tokens = segment.match(/(?:'(?:[^'\\]|\\.)*'|"(?:[^"\\]|\\.)*"|[^\s'"])+/g) || [];
-    while (/^[A-Za-z_][A-Za-z0-9_]*=/.test(tokens[0] || '')) tokens.shift();
-    if (baseCommand(tokens[0]) === 'env') {
-      tokens.shift();
-      while (/^[A-Za-z_][A-Za-z0-9_]*=/.test(tokens[0] || '')) tokens.shift();
-    }
-    const client = baseCommand(tokens[0]);
+  for (const segment of command.match(SEGMENT_RE) || []) {
+    const { client, tokens } = segmentClient(segment);
     const flag = client === 'psql' ? ['-c', '--command'] : ['mysql', 'mariadb'].includes(client) ? ['-e', '--execute'] : null;
     if (!flag) continue;
     for (let i = 1; i < tokens.length; i++) {
@@ -257,22 +266,32 @@ function hasDestructiveSqlArgument(command) {
   return false;
 }
 
-// A command line invokes a SQL client when some segment starts (after env
-// assignments and an `env` launcher) with one. Destructive SQL words only count
-// as executable SQL in that context, so `grep "delete from" notes.txt` or
-// `echo drop table` are not challenged.
-const SQL_CLIENTS = new Set(['psql', 'mysql', 'mariadb', 'sqlite3', 'sqlcmd', 'sqlplus', 'wrangler']);
+function flattenQuotes(text) {
+  return text.replace(/'(?:[^'\\]|\\.)*'/g, "''").replace(/"(?:[^"\\]|\\.)*"/g, '""');
+}
 
-function invokesSqlClient(command) {
-  const segments = command.match(/(?:'(?:[^'\\]|\\.)*'|"(?:[^"\\]|\\.)*"|[^;|&\r\n])+/g) || [];
-  for (const segment of segments) {
-    const tokens = segment.match(/(?:'(?:[^'\\]|\\.)*'|"(?:[^"\\]|\\.)*"|[^\s'"])+/g) || [];
-    while (/^[A-Za-z_][A-Za-z0-9_]*=/.test(tokens[0] || '')) tokens.shift();
-    if (baseCommand(tokens[0]) === 'env') {
-      tokens.shift();
-      while (/^[A-Za-z_][A-Za-z0-9_]*=/.test(tokens[0] || '')) tokens.shift();
+// Destructive SQL words count only where a SQL client can execute them: in the
+// client's own segment, in a heredoc attached to that segment, or in the segment
+// piped into it. `psql -c 'SELECT 1' && echo drop table x` is not challenged,
+// and neither are `grep "delete from" notes.txt` or `echo drop table`.
+function hasDestructiveSqlInput(command) {
+  const lines = String(command).split(/\r?\n/);
+  for (let n = 0; n < lines.length; n++) {
+    const pieces = lines[n].match(/(?:'(?:[^'\\]|\\.)*'|"(?:[^"\\]|\\.)*"|[^;|&])+|[;|&]+/g) || [];
+    const heredoc = lines[n].match(/<<-?\s*(['"]?)([A-Za-z_][A-Za-z0-9_]*)\1/);
+    let body = '';
+    if (heredoc) {
+      let end = n + 1;
+      while (end < lines.length && lines[end].trim() !== heredoc[2]) end++;
+      body = lines.slice(n + 1, end).join('\n');
+      n = end;
     }
-    if (SQL_CLIENTS.has(baseCommand(tokens[0]))) return true;
+    for (let i = 0; i < pieces.length; i++) {
+      if (/^[;|&]+$/.test(pieces[i]) || !SQL_CLIENTS.has(segmentClient(pieces[i]).client)) continue;
+      const piped = i >= 2 && pieces[i - 1] === '|' ? flattenQuotes(pieces[i - 2]) : '';
+      const scope = [flattenQuotes(pieces[i]), piped, heredoc ? body : ''].join('\n');
+      if (SQL_DESTRUCTIVE_RE.test(scope)) return true;
+    }
   }
   return false;
 }
@@ -287,10 +306,7 @@ function isDestructiveCommand(command) {
   const raw = String(command || '');
   if (!raw.trim()) return false;
 
-  const flattenedForSql = raw
-    .replace(/'(?:[^'\\]|\\.)*'/g, "''")
-    .replace(/"(?:[^"\\]|\\.)*"/g, '""');
-  if ((SQL_DESTRUCTIVE_RE.test(flattenedForSql) && invokesSqlClient(raw)) || hasDestructiveSqlArgument(raw)) return true;
+  if (hasDestructiveSqlInput(raw) || hasDestructiveSqlArgument(raw)) return true;
 
   for (const segment of splitSegments(raw)) {
     if (isDestructiveFindExec(segment)) return true;
@@ -402,9 +418,10 @@ function checkAndMark(stateFile, key) {
 
 // --- gate messages -----------------------------------------------------
 
-// Bidirectional-text and line-separator controls can reorder or hide part of an
-// echoed file name or command, so they are shown as visible \uXXXX escapes.
-const DISPLAY_CONTROL_RE = /[\u061c\u200e\u200f\u2028\u2029\u202a-\u202e\u2066-\u2069]/g;
+// C1 controls, zero-width characters, bidirectional-text and line-separator
+// controls can reorder, split or hide part of an echoed file name or command, so
+// they are shown as visible \uXXXX escapes.
+const DISPLAY_CONTROL_RE = /[\u0080-\u009f\u061c\u200b-\u200f\u2028\u2029\u202a-\u202e\u2060\u2066-\u2069\ufeff]/g;
 
 function sanitizeForMessage(value) {
   return String(value || '')

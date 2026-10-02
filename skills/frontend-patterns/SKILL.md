@@ -219,8 +219,13 @@ export function useQuery<T>(
   const enabled = options?.enabled !== false
 
   useEffect(() => {
+    // Invalidate any request still pending for the previous key, even when
+    // fetching is disabled, so it cannot commit stale data or an error.
+    requestIdRef.current++
     if (enabled) {
       refetch()
+    } else {
+      setLoading(false)
     }
   }, [key, enabled, refetch])
 

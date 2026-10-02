@@ -273,22 +273,26 @@ test('gate abstains instead of granting permission on every non-denial path', t 
 test('gate challenges SQL only in executable SQL contexts', () => {
  const {isDestructiveCommand}=require('../scripts/hooks/fact-forcing-gate');
  for(const command of ['psql <<EOF\nDROP TABLE users;\nEOF','sqlite3 app.db <<EOF\nDELETE FROM users;\nEOF','FOO=1 psql -c "SELECT 1"; mysql -e "TRUNCATE TABLE t"'])assert.equal(isDestructiveCommand(command),true,command);
- for(const command of ['grep -rn delete from src/','echo drop table users','cat notes.txt | grep truncate table','git log --grep=delete from'])assert.equal(isDestructiveCommand(command),false,command);
+ for(const command of ['grep -rn delete from src/','echo drop table users','cat notes.txt | grep truncate table','git log --grep=delete from',"psql -c 'SELECT 1' && echo drop table users",'echo ready; sqlite3 app.db .tables; echo delete from notes','mycli <<EOF\nDROP TABLE users;\nEOF'])assert.equal(isDestructiveCommand(command),false,command);
+ for(const command of ['env FOO=1 psql <<EOF\nDROP TABLE t;\nEOF','/usr/bin/psql <<EOF\nDROP TABLE t;\nEOF','echo drop table users | psql'])assert.equal(isDestructiveCommand(command),true,command);
 });
 
 test('gate escapes bidi and line-separator controls in echoed names', t => {
  const f=fixture(t);const env={...f.env};delete env.JARVIS_GATEGUARD;
- const name='safe\u202etxt.exe\u2028injected\u2066x';
+ const name='safe\u202etxt.exe\u2028injected\u2066x\u0085y\u200bz\ufeffw';
  const r=spawnSync(process.execPath,[path.join(root,'scripts/hooks/fact-forcing-gate.js')],{env,encoding:'utf8',input:JSON.stringify({session_id:'bidi-'+path.basename(f.temp),tool_name:'Edit',tool_input:{file_path:name}})});
- const reason=JSON.parse(r.stdout).hookSpecificOutput.permissionDecision==='deny'?JSON.parse(r.stdout).hookSpecificOutput.permissionDecisionReason:'';
+ const output=JSON.parse(r.stdout).hookSpecificOutput;
+ assert.equal(output.permissionDecision,'deny');
+ const reason=output.permissionDecisionReason;
  assert.match(reason,/\\u202e/);assert.match(reason,/\\u2028/);assert.match(reason,/\\u2066/);
- assert.doesNotMatch(reason,/[\u202e\u2028\u2066]/);
+ assert.match(reason,/\\u0085/);assert.match(reason,/\\u200b/);assert.match(reason,/\\ufeff/);
+ assert.doesNotMatch(reason,/[\u202e\u2028\u2066\u0085\u200b\ufeff]/);
 });
 
 test('gate recognizes destructive SQL client arguments without gating quoted examples', () => {
  const {isDestructiveCommand}=require('../scripts/hooks/fact-forcing-gate');
- for(const command of ["psql -c 'DROP TABLE users'", 'mysql -e "TRUNCATE TABLE users"', "psql --command='DELETE FROM users'", "echo ready && mysql --execute='DROP TABLE users'"]) assert.equal(isDestructiveCommand(command),true,command);
- for(const command of ["echo 'DROP TABLE users'", "printf 'psql -c DROP TABLE users'", "psql -c 'SELECT 1'", "echo 'mysql -e DELETE FROM users'"]) assert.equal(isDestructiveCommand(command),false,command);
+ for(const command of ["psql -c 'DROP TABLE users'", 'mysql -e "TRUNCATE TABLE users"', "psql --command='DELETE FROM users'", "echo ready && mysql --execute='DROP TABLE users'", "env FOO=1 psql -c 'DROP TABLE users'", "/usr/bin/psql.exe -c 'DROP TABLE users'"]) assert.equal(isDestructiveCommand(command),true,command);
+ for(const command of ["echo 'DROP TABLE users'", "printf 'psql -c DROP TABLE users'", "psql -c 'SELECT 1'", "echo 'mysql -e DELETE FROM users'", "othersql -c 'DROP TABLE users'"]) assert.equal(isDestructiveCommand(command),false,command);
 });
 
 test('checked hook operations refresh session activity but expired keys stay expired', t => {

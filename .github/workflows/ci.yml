@@ -51,6 +51,12 @@ jobs:
       - name: Run neutral starter tests
         run: node --test tests/starter.test.js
 
+      # The dashboard scanner uses list[str] annotations (Python 3.9+). Pin the
+      # interpreter so the result does not float with the runner image.
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: '3.12'
+
       - name: Run dashboard scanner tests
         run: python3 -m unittest tests/dashboard_scanner_test.py
 

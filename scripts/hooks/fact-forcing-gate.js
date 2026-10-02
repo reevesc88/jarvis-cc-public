@@ -232,14 +232,14 @@ function isDestructivePowerShellRemove(tokens) {
   return hasRecurse && hasForce;
 }
 
-const SQL_CLIENTS = new Set(['psql', 'mysql', 'mariadb', 'sqlite3', 'sqlcmd', 'sqlplus', 'wrangler']);
+const SQL_CLIENTS = new Set(['psql', 'mysql', 'mariadb', 'sqlite3', 'sqlcmd', 'sqlplus']);
 const SEGMENT_RE = /(?:'(?:[^'\\]|\\.)*'|"(?:[^"\\]|\\.)*"|[^;|&\r\n])+/g;
 const TOKEN_RE = /(?:'(?:[^'\\]|\\.)*'|"(?:[^"\\]|\\.)*"|[^\s'"])+/g;
 const ENV_ASSIGNMENT_RE = /^[A-Za-z_][A-Za-z0-9_]*=/;
 
-// One shared parse of a command segment: strips leading env assignments and a
-// plain `env` launcher, then returns the client name and its remaining tokens.
-// Substitutions, other wrappers and indirect inputs are not followed.
+// One parse of a command segment: strips leading env assignments and a plain
+// `env` launcher, then returns the executable name (shell quotes removed) and the
+// remaining tokens.
 function segmentClient(segment) {
   const tokens = segment.match(TOKEN_RE) || [];
   while (ENV_ASSIGNMENT_RE.test(tokens[0] || '')) tokens.shift();
@@ -250,123 +250,26 @@ function segmentClient(segment) {
   return { client: baseCommand(String(tokens[0] || '').replace(/^['"]|['"]$/g, '')), tokens };
 }
 
-// Recognize common SQL CLI argument forms only. This is not a shell parser.
-function hasDestructiveSqlArgument(command) {
-  for (const segment of command.match(SEGMENT_RE) || []) {
-    const { client, tokens } = segmentClient(segment);
-    const flag = client === 'psql' ? ['-c', '--command'] : ['mysql', 'mariadb'].includes(client) ? ['-e', '--execute'] : null;
-    if (!flag) continue;
-    for (let i = 1; i < tokens.length; i++) {
-      let sql;
-      if (flag.includes(tokens[i])) sql = tokens[++i];
-      else if (tokens[i].startsWith(flag[1] + '=')) sql = tokens[i].slice(flag[1].length + 1);
-      if (sql && SQL_DESTRUCTIVE_RE.test(stripSqlComments(sql))) return true;
-    }
-  }
-  return false;
+function isSqlClientSegment(segment) {
+  const { client, tokens } = segmentClient(segment);
+  if (client === 'wrangler') return tokens.includes('d1') && tokens.includes('execute');
+  return SQL_CLIENTS.has(client);
 }
 
-// Removes redirection operands (`> out.log`, `2>&1`, `< in.sql`) so a file name is
-// not mistaken for SQL. Heredocs (`<<`) and here-strings (`<<<`) are kept: they
-// carry SQL input.
-function stripRedirections(segment) {
-  return segment.replace(/\d*(?:>>?&?|(?<!<)<(?!<))\s*(?:'(?:[^'\\]|\\.)*'|"(?:[^"\\]|\\.)*"|[^\s;|&]+)/g, ' ');
-}
-
-// Drops an unquoted shell comment (`# ...` at a word boundary) from one line.
-function stripShellComment(line) {
-  let quote = '';
-  for (let i = 0; i < line.length; i++) {
-    const ch = line[i];
-    if (quote) {
-      if (ch === '\\' && quote === '"') i++;
-      else if (ch === quote) quote = '';
-    } else if (ch === "'" || ch === '"') quote = ch;
-    else if (ch === '\\') i++;
-    else if (ch === '#' && (i === 0 || /\s/.test(line[i - 1]))) return line.slice(0, i);
-  }
-  return line;
-}
-
-// Scope: this gate is a first-attempt reminder, not a shell parser or a security
-// boundary. It reads plain pipes, heredocs, redirections and comments, and does
-// not follow variables, substitutions, functions, aliases or other wrappers. An
-// over-challenge costs one identical retry, so ambiguity resolves toward challenging.
-// Destructive SQL words count only where a SQL client can execute them: in the
-// client's own segment (quoted arguments included, since `sqlite3 db 'DROP TABLE
-// t'` runs its quoted argument), in a heredoc attached to that same segment, or
-// in the segment piped into it (quoted text included, `echo 'DROP TABLE t' | psql`).
-// A heredoc feeding another command, or text after a comment mark, is not SQL
-// input. `psql -c 'SELECT 1' && echo drop table x`, `grep "delete from" notes.txt`
-// and `echo drop table` are not challenged.
+// Scope: this gate is a first-attempt reminder, not a shell or SQL parser and not
+// a security boundary. The rule is deliberately simple: a destructive SQL phrase
+// (drop table, delete from, truncate table) anywhere in a command line that also
+// runs a SQL client is challenged once. That reads quoted arguments, heredocs,
+// pipes and here-strings without parsing any of them, so it has no blind spot for
+// them. It over-challenges where the phrase is not actually executed (for example
+// `psql -c 'SELECT 1' && echo drop table x`); that costs one identical retry,
+// which is the accepted trade-off. A phrase in a command with no SQL client
+// (`grep "delete from" notes.txt`, `echo drop table`) is not challenged. It does
+// not follow variables, substitutions, functions, aliases or other wrappers.
 function hasDestructiveSqlInput(command) {
-  const lines = String(command).split(/\r?\n/);
-  const heredocRe = /(?<!<)<<(?!<)-?\s*(['"]?)([^\s'"<>;|&()]+)\1/g;
-  for (let n = 0; n < lines.length; n++) {
-    let line = stripShellComment(lines[n]);
-    // A line ending in a pipe or && / || continues on the next line.
-    while (/(?:\|\|?|&&)\s*$/.test(line) && n + 1 < lines.length) line += ' ' + stripShellComment(lines[++n]);
-    const pieces = line.replace(/\d*[<>]&\d*-?|&>>?/g, ' ').match(/(?:'(?:[^'\\]|\\.)*'|"(?:[^"\\]|\\.)*"|[^;|&])+|[;|&]+/g) || [];
-    const bodies = pieces.map(() => '');
-    // Every heredoc declared on this line, in shell order; bodies follow in that order.
-    const declarations = [];
-    pieces.forEach((piece, index) => {
-      for (const m of piece.matchAll(heredocRe)) declarations.push({ index, delimiter: m[2] });
-    });
-    let next = n + 1;
-    for (const { index, delimiter } of declarations) {
-      const start = next;
-      while (next < lines.length && lines[next].trim() !== delimiter) next++;
-      bodies[index] += (bodies[index] ? '\n' : '') + lines.slice(start, next).join('\n');
-      next++;
-    }
-    if (declarations.length) n = Math.max(n, next - 1);
-    const isPipe = piece => piece === '|' || piece === '|&';
-    for (let i = 0; i < pieces.length; i++) {
-      if (/^[;|&]+$/.test(pieces[i]) || !SQL_CLIENTS.has(segmentClient(pieces[i]).client)) continue;
-      // The client plus every contiguous upstream pipeline stage.
-      const scope = [clientScope(pieces[i]), bodies[i]];
-      for (let j = i; j >= 2 && isPipe(pieces[j - 1]); j -= 2) {
-        // Only echo and printf emit their arguments; other stages (cat, tee, grep)
-        // take file names, so just their heredoc bodies and upstream stages count.
-        const emits = ['echo', 'printf'].includes(segmentClient(pieces[j - 2]).client);
-        scope.push(emits ? stripRedirections(pieces[j - 2]) : '', bodies[j - 2]);
-      }
-      if (SQL_DESTRUCTIVE_RE.test(stripSqlComments(scope.join('\n')))) return true;
-    }
-  }
-  return false;
-}
-
-function stripSqlComments(text) {
-  return text.replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/(^|[\s'"])--(\s[^\n]*|$)/gm, ' ');
-}
-
-// The client's own invocation without redirection operands and, for sqlite3, the
-// database operand (its first non-option argument), which is a file name.
-const SQLITE_OPTIONS_WITH_OPERAND = new Set(['-cmd', '-init', '-separator', '-newline', '-nullvalue', '-vfs', '-lookaside', '-maxsize', '-mmap', '-pagecache', '-heap']);
-const FILE_FLAGS = new Set(['-f', '--file', '-o', '--output', '-L', '--log-file']);
-
-function clientScope(piece) {
-  const { client, tokens } = segmentClient(stripRedirections(piece));
-  const kept = [];
-  let database = client !== 'sqlite3';
-  for (let i = 0; i < tokens.length; i++) {
-    const token = tokens[i];
-    if (i > 0 && FILE_FLAGS.has(token)) { i++; continue; }
-    if (i > 0 && /^--(?:file|output|log-file)=/.test(token)) continue;
-    if (!database && i > 0) {
-      if (token.startsWith('-')) {
-        kept.push(token);
-        if (SQLITE_OPTIONS_WITH_OPERAND.has(token) && i + 1 < tokens.length) kept.push(tokens[++i]);
-        continue;
-      }
-      database = true; // sqlite3's database operand is a file name
-      continue;
-    }
-    kept.push(token);
-  }
-  return kept.join(' ');
+  const text = String(command);
+  if (!SQL_DESTRUCTIVE_RE.test(text)) return false;
+  return (text.match(SEGMENT_RE) || []).some(isSqlClientSegment);
 }
 
 /**
@@ -379,7 +282,7 @@ function isDestructiveCommand(command) {
   const raw = String(command || '');
   if (!raw.trim()) return false;
 
-  if (hasDestructiveSqlInput(raw) || hasDestructiveSqlArgument(raw)) return true;
+  if (hasDestructiveSqlInput(raw)) return true;
 
   for (const segment of splitSegments(raw)) {
     if (isDestructiveFindExec(segment)) return true;

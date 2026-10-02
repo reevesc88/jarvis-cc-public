@@ -128,7 +128,8 @@ export function DataLoader<T>({ url, children }: DataLoaderProps<T>) {
       .then(res => res.json())
       .then(result => { if (isCurrent()) setData(result) })
       .catch(err => {
-        if (err.name !== 'AbortError' && isCurrent()) setError(err)
+        // An aborted request is no longer current, so it never reaches setError.
+        if (isCurrent()) setError(err instanceof Error ? err : new Error(String(err)))
       })
       .finally(() => {
         if (isCurrent()) setLoading(false)

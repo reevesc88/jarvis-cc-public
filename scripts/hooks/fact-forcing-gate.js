@@ -260,7 +260,7 @@ function hasDestructiveSqlArgument(command) {
       let sql;
       if (flag.includes(tokens[i])) sql = tokens[++i];
       else if (tokens[i].startsWith(flag[1] + '=')) sql = tokens[i].slice(flag[1].length + 1);
-      if (sql && SQL_DESTRUCTIVE_RE.test(sql)) return true;
+      if (sql && SQL_DESTRUCTIVE_RE.test(stripSqlComments(sql))) return true;
     }
   }
   return false;
@@ -305,7 +305,7 @@ function hasDestructiveSqlInput(command) {
   for (let n = 0; n < lines.length; n++) {
     let line = stripShellComment(lines[n]);
     // A line ending in a pipe or && / || continues on the next line.
-    while (/(?:\|\|?|&&)\s*$/.test(line) && !/(?<!<)<<(?!<)/.test(line) && n + 1 < lines.length) line += ' ' + stripShellComment(lines[++n]);
+    while (/(?:\|\|?|&&)\s*$/.test(line) && n + 1 < lines.length) line += ' ' + stripShellComment(lines[++n]);
     const pieces = line.replace(/\d*[<>]&\d*-?|&>>?/g, ' ').match(/(?:'(?:[^'\\]|\\.)*'|"(?:[^"\\]|\\.)*"|[^;|&])+|[;|&]+/g) || [];
     const bodies = pieces.map(() => '');
     // Every heredoc declared on this line, in shell order; bodies follow in that order.
@@ -326,23 +326,47 @@ function hasDestructiveSqlInput(command) {
       if (/^[;|&]+$/.test(pieces[i]) || !SQL_CLIENTS.has(segmentClient(pieces[i]).client)) continue;
       // The client plus every contiguous upstream pipeline stage.
       const scope = [clientScope(pieces[i]), bodies[i]];
-      for (let j = i; j >= 2 && isPipe(pieces[j - 1]); j -= 2) scope.push(stripRedirections(pieces[j - 2]), bodies[j - 2]);
-      const text = scope.join('\n').replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/(^|\s)--(\s[^\n]*|$)/gm, ' ');
-      if (SQL_DESTRUCTIVE_RE.test(text)) return true;
+      for (let j = i; j >= 2 && isPipe(pieces[j - 1]); j -= 2) {
+        // Only echo and printf emit their arguments; other stages (cat, tee, grep)
+        // take file names, so just their heredoc bodies and upstream stages count.
+        const emits = ['echo', 'printf'].includes(segmentClient(pieces[j - 2]).client);
+        scope.push(emits ? stripRedirections(pieces[j - 2]) : '', bodies[j - 2]);
+      }
+      if (SQL_DESTRUCTIVE_RE.test(stripSqlComments(scope.join('\n')))) return true;
     }
   }
   return false;
 }
 
+function stripSqlComments(text) {
+  return text.replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/(^|[\s'"])--(\s[^\n]*|$)/gm, ' ');
+}
+
 // The client's own invocation without redirection operands and, for sqlite3, the
 // database operand (its first non-option argument), which is a file name.
+const SQLITE_OPTIONS_WITH_OPERAND = new Set(['-cmd', '-init', '-separator', '-newline', '-nullvalue', '-vfs', '-lookaside', '-maxsize', '-mmap', '-pagecache', '-heap']);
+const FILE_FLAGS = new Set(['-f', '--file', '-o', '--output', '-L', '--log-file']);
+
 function clientScope(piece) {
   const { client, tokens } = segmentClient(stripRedirections(piece));
-  if (client === 'sqlite3') {
-    const db = tokens.findIndex((token, i) => i > 0 && !token.startsWith('-'));
-    if (db > 0) tokens.splice(db, 1);
+  const kept = [];
+  let database = client !== 'sqlite3';
+  for (let i = 0; i < tokens.length; i++) {
+    const token = tokens[i];
+    if (i > 0 && FILE_FLAGS.has(token)) { i++; continue; }
+    if (i > 0 && /^--(?:file|output|log-file)=/.test(token)) continue;
+    if (!database && i > 0) {
+      if (token.startsWith('-')) {
+        kept.push(token);
+        if (SQLITE_OPTIONS_WITH_OPERAND.has(token) && i + 1 < tokens.length) kept.push(tokens[++i]);
+        continue;
+      }
+      database = true; // sqlite3's database operand is a file name
+      continue;
+    }
+    kept.push(token);
   }
-  return tokens.join(' ');
+  return kept.join(' ');
 }
 
 /**

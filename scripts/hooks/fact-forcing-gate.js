@@ -252,7 +252,7 @@ function segmentClient(segment) {
 
 function isSqlClientSegment(segment) {
   const { client, tokens } = segmentClient(segment);
-  if (client === 'wrangler') { const [command, sub] = tokens.slice(1).filter(token => !token.startsWith('-')); return command === 'd1' && sub === 'execute'; }
+  if (client === 'wrangler') { const [command, sub] = tokens.slice(1).map(token => token.replace(/^['"]|['"]$/g, '')).filter(token => !token.startsWith('-')); return command === 'd1' && sub === 'execute'; }
   return SQL_CLIENTS.has(client);
 }
 

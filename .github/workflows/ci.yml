@@ -51,6 +51,9 @@ jobs:
       - name: Run neutral starter tests
         run: node --test tests/starter.test.js
 
+      - name: Run dashboard scanner tests
+        run: python3 -m unittest tests/dashboard_scanner_test.py
+
       - name: Run the orchestration test suite
         run: node --test tests/agency-orchestration.test.js
 

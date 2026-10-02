@@ -257,6 +257,26 @@ function hasDestructiveSqlArgument(command) {
   return false;
 }
 
+// A command line invokes a SQL client when some segment starts (after env
+// assignments and an `env` launcher) with one. Destructive SQL words only count
+// as executable SQL in that context, so `grep "delete from" notes.txt` or
+// `echo drop table` are not challenged.
+const SQL_CLIENTS = new Set(['psql', 'mysql', 'mariadb', 'sqlite3', 'sqlcmd', 'sqlplus', 'wrangler']);
+
+function invokesSqlClient(command) {
+  const segments = command.match(/(?:'(?:[^'\\]|\\.)*'|"(?:[^"\\]|\\.)*"|[^;|&\r\n])+/g) || [];
+  for (const segment of segments) {
+    const tokens = segment.match(/(?:'(?:[^'\\]|\\.)*'|"(?:[^"\\]|\\.)*"|[^\s'"])+/g) || [];
+    while (/^[A-Za-z_][A-Za-z0-9_]*=/.test(tokens[0] || '')) tokens.shift();
+    if (baseCommand(tokens[0]) === 'env') {
+      tokens.shift();
+      while (/^[A-Za-z_][A-Za-z0-9_]*=/.test(tokens[0] || '')) tokens.shift();
+    }
+    if (SQL_CLIENTS.has(baseCommand(tokens[0]))) return true;
+  }
+  return false;
+}
+
 /**
  * Decide whether a raw Bash/PowerShell command line contains a destructive
  * action this gate should challenge on first attempt.
@@ -270,7 +290,7 @@ function isDestructiveCommand(command) {
   const flattenedForSql = raw
     .replace(/'(?:[^'\\]|\\.)*'/g, "''")
     .replace(/"(?:[^"\\]|\\.)*"/g, '""');
-  if (SQL_DESTRUCTIVE_RE.test(flattenedForSql) || hasDestructiveSqlArgument(raw)) return true;
+  if ((SQL_DESTRUCTIVE_RE.test(flattenedForSql) && invokesSqlClient(raw)) || hasDestructiveSqlArgument(raw)) return true;
 
   for (const segment of splitSegments(raw)) {
     if (isDestructiveFindExec(segment)) return true;
@@ -382,9 +402,14 @@ function checkAndMark(stateFile, key) {
 
 // --- gate messages -----------------------------------------------------
 
+// Bidirectional-text and line-separator controls can reorder or hide part of an
+// echoed file name or command, so they are shown as visible \uXXXX escapes.
+const DISPLAY_CONTROL_RE = /[\u061c\u200e\u200f\u2028\u2029\u202a-\u202e\u2066-\u2069]/g;
+
 function sanitizeForMessage(value) {
   return String(value || '')
     .replace(/[\x00-\x1f\x7f]/g, ' ')
+    .replace(DISPLAY_CONTROL_RE, ch => '\\u' + ch.charCodeAt(0).toString(16).padStart(4, '0'))
     .trim()
     .slice(0, 500);
 }
@@ -497,17 +522,15 @@ function run(rawInput) {
   }
 
   if (toolName === 'MultiEdit') {
-    const edits = Array.isArray(toolInput.edits) ? toolInput.edits : [];
-    for (const edit of edits) {
-      const filePath = edit && edit.file_path;
-      if (!filePath) continue;
-      const result = checkAndMark(stateFile, filePath);
-      if (result === 'checked') continue;
-      if (result !== 'new') return emitAbstain();
+    // The host's MultiEdit payload is { file_path, edits: [{ old_string,
+    // new_string, ... }] }: one file per call, the path at the top level and
+    // no per-edit file_path.
+    const filePath = toolInput.file_path || '';
+    if (!filePath) return emitAbstain();
 
-      return emitDeny(fileGateMessage('edit', filePath));
-    }
-    return emitAbstain();
+    if (checkAndMark(stateFile, filePath) !== 'new') return emitAbstain();
+
+    return emitDeny(fileGateMessage('edit', filePath));
   }
 
   if (toolName === 'Bash') {

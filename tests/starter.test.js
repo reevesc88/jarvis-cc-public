@@ -255,7 +255,7 @@ test('gate abstains instead of granting permission on every non-denial path', t 
  const f=fixture(t);const env={...f.env};delete env.CLAUDE_SESSION_ID;delete env.JARVIS_SESSION_ID;delete env.JARVIS_GATEGUARD;
  const hook=path.join(root,'scripts/hooks/fact-forcing-gate.js');
  const run=(data,extra={})=>{const r=spawnSync(process.execPath,[hook],{env:{...env,...extra},encoding:'utf8',input:typeof data==='string'?data:JSON.stringify(data)});assert.equal(r.status,0);return JSON.parse(r.stdout);};
- for(const data of ['{bad',{}, {tool_name:'Read'}, {session_id:'test-'+path.basename(f.temp),tool_name:'Bash',tool_input:{command:'git status'}}, {session_id:'x',tool_name:'Edit',tool_input:{}}, {session_id:'x',tool_name:'MultiEdit',tool_input:{edits:[]}}])assert.deepEqual(run(data),{});
+ for(const data of ['{bad',{}, {tool_name:'Read'}, {session_id:'test-'+path.basename(f.temp),tool_name:'Bash',tool_input:{command:'git status'}}, {session_id:'x',tool_name:'Edit',tool_input:{}}, {session_id:'x',tool_name:'MultiEdit',tool_input:{edits:[]}}, {session_id:'x',tool_name:'MultiEdit',tool_input:{edits:[{file_path:'wrong-shape.txt'}]}}])assert.deepEqual(run(data),{});
  const edit={session_id:'test-'+path.basename(f.temp),tool_name:'Write',tool_input:{file_path:'test.txt',content:'test'}};
  assert.deepEqual(run(edit,{JARVIS_GATEGUARD:'off'}),{});
  assert.equal(run(edit).hookSpecificOutput.permissionDecision,'deny');assert.deepEqual(run(edit),{});
@@ -263,12 +263,27 @@ test('gate abstains instead of granting permission on every non-denial path', t 
  assert.equal(run(bash).hookSpecificOutput.permissionDecision,'deny');assert.deepEqual(run(bash),{});
  const otherBash={session_id:edit.session_id,tool_name:'Bash',tool_input:{command:'rm -rf other.txt'}};
  assert.equal(run(otherBash).hookSpecificOutput.permissionDecision,'deny');
- const multi={session_id:edit.session_id,tool_name:'MultiEdit',tool_input:{edits:[{file_path:'multi.txt'}]}};
+ const multi={session_id:edit.session_id,tool_name:'MultiEdit',tool_input:{file_path:'multi.txt',edits:[{old_string:'a',new_string:'b'}]}};
  assert.equal(run(multi).hookSpecificOutput.permissionDecision,'deny');assert.deepEqual(run(multi),{});
  const blocked=path.join(f.temp,'blocked-home');fs.mkdirSync(blocked);put(blocked,'.jarvis-cc','block state directory');
  assert.deepEqual(run(edit,{HOME:blocked,USERPROFILE:blocked}),{});
 });
 
+
+test('gate challenges SQL only in executable SQL contexts', () => {
+ const {isDestructiveCommand}=require('../scripts/hooks/fact-forcing-gate');
+ for(const command of ['psql <<EOF\nDROP TABLE users;\nEOF','sqlite3 app.db <<EOF\nDELETE FROM users;\nEOF','FOO=1 psql -c "SELECT 1"; mysql -e "TRUNCATE TABLE t"'])assert.equal(isDestructiveCommand(command),true,command);
+ for(const command of ['grep -rn delete from src/','echo drop table users','cat notes.txt | grep truncate table','git log --grep=delete from'])assert.equal(isDestructiveCommand(command),false,command);
+});
+
+test('gate escapes bidi and line-separator controls in echoed names', t => {
+ const f=fixture(t);const env={...f.env};delete env.JARVIS_GATEGUARD;
+ const name='safe\u202etxt.exe\u2028injected\u2066x';
+ const r=spawnSync(process.execPath,[path.join(root,'scripts/hooks/fact-forcing-gate.js')],{env,encoding:'utf8',input:JSON.stringify({session_id:'bidi-'+path.basename(f.temp),tool_name:'Edit',tool_input:{file_path:name}})});
+ const reason=JSON.parse(r.stdout).hookSpecificOutput.permissionDecision==='deny'?JSON.parse(r.stdout).hookSpecificOutput.permissionDecisionReason:'';
+ assert.match(reason,/\\u202e/);assert.match(reason,/\\u2028/);assert.match(reason,/\\u2066/);
+ assert.doesNotMatch(reason,/[\u202e\u2028\u2066]/);
+});
 
 test('gate recognizes destructive SQL client arguments without gating quoted examples', () => {
  const {isDestructiveCommand}=require('../scripts/hooks/fact-forcing-gate');
@@ -280,7 +295,7 @@ test('checked hook operations refresh session activity but expired keys stay exp
  const f=fixture(t); const env={...f.env};delete env.JARVIS_GATEGUARD;
  const session='activity-test';const statePath=path.join(f.home,'.jarvis-cc/gateguard/state-'+session+'.json');
  const invoke=(tool_name,tool_input)=>JSON.parse(spawnSync(process.execPath,[path.join(root,'scripts/hooks/fact-forcing-gate.js')],{env,encoding:'utf8',input:JSON.stringify({session_id:session,tool_name,tool_input})}).stdout);
- for(const [tool,input] of [['Edit',{file_path:'active.txt'}],['Bash',{command:'rm -rf active.txt'}],['MultiEdit',{edits:[{file_path:'multi.txt'}]}]]) {
+ for(const [tool,input] of [['Edit',{file_path:'active.txt'}],['Bash',{command:'rm -rf active.txt'}],['MultiEdit',{file_path:'multi.txt',edits:[{old_string:'a',new_string:'b'}]}]]) {
   assert.equal(invoke(tool,input).hookSpecificOutput.permissionDecision,'deny');
   const state=JSON.parse(fs.readFileSync(statePath));state.lastActive=Date.now()-29*60*1000;fs.writeFileSync(statePath,JSON.stringify(state));
   assert.deepEqual(invoke(tool,input),{});

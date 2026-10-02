@@ -111,11 +111,21 @@ export function DataLoader<T>({ url, children }: DataLoaderProps<T>) {
   const [error, setError] = useState<Error | null>(null)
 
   useEffect(() => {
-    fetch(url)
+    // Abort the previous request when url changes or the component unmounts,
+    // so a slow older response cannot overwrite newer state.
+    const controller = new AbortController()
+    setLoading(true)
+    setError(null)
+    fetch(url, { signal: controller.signal })
       .then(res => res.json())
       .then(setData)
-      .catch(setError)
-      .finally(() => setLoading(false))
+      .catch(err => {
+        if (err.name !== 'AbortError') setError(err)
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setLoading(false)
+      })
+    return () => controller.abort()
   }, [url])
 
   return <>{children(data, loading, error)}</>
@@ -179,20 +189,30 @@ export function useQuery<T>(
     optionsRef.current = options
   })
 
+  // Only the most recent request may write state. Without this guard a slow
+  // older response (a previous key, or an earlier refetch) can land last and
+  // overwrite newer data. Bumping the id on unmount also drops late responses.
+  const requestIdRef = useRef(0)
+  useEffect(() => () => { requestIdRef.current++ }, [])
+
   const refetch = useCallback(async () => {
+    const requestId = ++requestIdRef.current
+    const isCurrent = () => requestId === requestIdRef.current
     setLoading(true)
     setError(null)
 
     try {
       const result = await fetcherRef.current()
+      if (!isCurrent()) return
       setData(result)
       optionsRef.current?.onSuccess?.(result)
     } catch (err) {
+      if (!isCurrent()) return
       const error = err as Error
       setError(error)
       optionsRef.current?.onError?.(error)
     } finally {
-      setLoading(false)
+      if (isCurrent()) setLoading(false)
     }
   }, [])
 

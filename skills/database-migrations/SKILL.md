@@ -67,8 +67,11 @@ CREATE INDEX idx_users_email ON users (email);
 -- GOOD: Non-blocking, allows concurrent writes
 CREATE INDEX CONCURRENTLY idx_users_email ON users (email);
 
--- Note: CONCURRENTLY cannot run inside a transaction block
--- Most migration tools need special handling for this
+-- Note: CONCURRENTLY cannot run inside a transaction block, and a
+-- migration file with several statements is usually sent as one query
+-- string, which PostgreSQL runs in an implicit transaction. Put the
+-- CREATE INDEX CONCURRENTLY statement alone in its own migration file,
+-- with no BEGIN/COMMIT, and check how your tool handles transactions.
 ```
 
 ### Renaming a Column (Zero-Downtime)
@@ -176,7 +179,9 @@ For operations Prisma cannot express (concurrent indexes, data backfills):
 
 ```sql
 -- migrations/20240115_add_email_index/migration.sql
--- Prisma cannot generate CONCURRENTLY, so we write it manually
+-- Prisma cannot generate CONCURRENTLY, so we write it manually.
+-- Keep this as the ONLY statement in the file: CONCURRENTLY fails inside
+-- a transaction block, and a multi-statement file runs in an implicit one.
 CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_users_email ON users (email);
 ```
 
@@ -387,11 +392,17 @@ migrate -path migrations -database "$DATABASE_URL" force VERSION
 ```sql
 -- migrations/000003_add_user_avatar.up.sql
 ALTER TABLE users ADD COLUMN avatar_url TEXT;
-CREATE INDEX CONCURRENTLY idx_users_avatar ON users (avatar_url) WHERE avatar_url IS NOT NULL;
 
 -- migrations/000003_add_user_avatar.down.sql
-DROP INDEX IF EXISTS idx_users_avatar;
 ALTER TABLE users DROP COLUMN IF EXISTS avatar_url;
+
+-- migrations/000004_add_user_avatar_index.up.sql
+-- Its own file: CONCURRENTLY cannot run in a multi-statement (implicit
+-- transaction) file, so do not combine it with the ALTER TABLE above.
+CREATE INDEX CONCURRENTLY idx_users_avatar ON users (avatar_url) WHERE avatar_url IS NOT NULL;
+
+-- migrations/000004_add_user_avatar_index.down.sql
+DROP INDEX CONCURRENTLY IF EXISTS idx_users_avatar;
 ```
 
 ## Zero-Downtime Migration Strategy

@@ -250,9 +250,20 @@ function segmentClient(segment) {
   return { client: baseCommand(String(tokens[0] || '').replace(/^['"]|['"]$/g, '')), tokens };
 }
 
+const WRANGLER_VALUE_OPTIONS = new Set(['-c', '--config', '-e', '--env', '--cwd']);
+
 function isSqlClientSegment(segment) {
   const { client, tokens } = segmentClient(segment);
-  if (client === 'wrangler') { const [command, sub] = tokens.slice(1).map(token => token.replace(/^['"]|['"]$/g, '')).filter(token => !token.startsWith('-')); return command === 'd1' && sub === 'execute'; }
+  if (client === 'wrangler') {
+    // Skip global options (and the values of those that take one) to reach the subcommand.
+    const words = [];
+    for (let i = 1; i < tokens.length; i++) {
+      const token = tokens[i].replace(/^['"]|['"]$/g, '');
+      if (WRANGLER_VALUE_OPTIONS.has(token)) i++;
+      else if (!token.startsWith('-')) words.push(token);
+    }
+    return words[0] === 'd1' && words[1] === 'execute';
+  }
   return SQL_CLIENTS.has(client);
 }
 

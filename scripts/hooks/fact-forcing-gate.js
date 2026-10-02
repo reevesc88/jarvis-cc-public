@@ -232,29 +232,55 @@ function isDestructivePowerShellRemove(tokens) {
   return hasRecurse && hasForce;
 }
 
-// Recognize common SQL CLI argument forms only. This is not a shell parser:
-// Only plain env launchers/assignments are recognized; substitutions, other wrappers
-// and indirect SQL inputs remain outside this reminder.
-function hasDestructiveSqlArgument(command) {
-  const segments = command.match(/(?:'(?:[^'\\]|\\.)*'|"(?:[^"\\]|\\.)*"|[^;|&\r\n])+/g) || [];
-  for (const segment of segments) {
-    const tokens = segment.match(/(?:'(?:[^'\\]|\\.)*'|"(?:[^"\\]|\\.)*"|[^\s'"])+/g) || [];
-    while (/^[A-Za-z_][A-Za-z0-9_]*=/.test(tokens[0] || '')) tokens.shift();
-    if (baseCommand(tokens[0]) === 'env') {
-      tokens.shift();
-      while (/^[A-Za-z_][A-Za-z0-9_]*=/.test(tokens[0] || '')) tokens.shift();
-    }
-    const client = baseCommand(tokens[0]);
-    const flag = client === 'psql' ? ['-c', '--command'] : ['mysql', 'mariadb'].includes(client) ? ['-e', '--execute'] : null;
-    if (!flag) continue;
-    for (let i = 1; i < tokens.length; i++) {
-      let sql;
-      if (flag.includes(tokens[i])) sql = tokens[++i];
-      else if (tokens[i].startsWith(flag[1] + '=')) sql = tokens[i].slice(flag[1].length + 1);
-      if (sql && SQL_DESTRUCTIVE_RE.test(sql)) return true;
-    }
+const SQL_CLIENTS = new Set(['psql', 'mysql', 'mariadb', 'sqlite3', 'sqlcmd', 'sqlplus']);
+const SEGMENT_RE = /(?:'(?:[^'\\]|\\.)*'|"(?:[^"\\]|\\.)*"|[^;|&\r\n])+/g;
+const TOKEN_RE = /(?:'(?:[^'\\]|\\.)*'|"(?:[^"\\]|\\.)*"|[^\s'"])+/g;
+const ENV_ASSIGNMENT_RE = /^[A-Za-z_][A-Za-z0-9_]*=/;
+
+// One parse of a command segment: strips leading env assignments and a plain
+// `env` launcher, then returns the executable name (shell quotes removed) and the
+// remaining tokens.
+function segmentClient(segment) {
+  const tokens = segment.match(TOKEN_RE) || [];
+  while (ENV_ASSIGNMENT_RE.test(tokens[0] || '')) tokens.shift();
+  if (baseCommand(tokens[0]) === 'env') {
+    tokens.shift();
+    while (ENV_ASSIGNMENT_RE.test(tokens[0] || '')) tokens.shift();
   }
-  return false;
+  return { client: baseCommand(String(tokens[0] || '').replace(/^['"]|['"]$/g, '')), tokens };
+}
+
+const WRANGLER_VALUE_OPTIONS = new Set(['-c', '--config', '-e', '--env', '--cwd']);
+
+function isSqlClientSegment(segment) {
+  const { client, tokens } = segmentClient(segment);
+  if (client === 'wrangler') {
+    // Skip global options (and the values of those that take one) to reach the subcommand.
+    const words = [];
+    for (let i = 1; i < tokens.length; i++) {
+      const token = tokens[i].replace(/^['"]|['"]$/g, '');
+      if (WRANGLER_VALUE_OPTIONS.has(token)) i++;
+      else if (!token.startsWith('-')) words.push(token);
+    }
+    return words[0] === 'd1' && words[1] === 'execute';
+  }
+  return SQL_CLIENTS.has(client);
+}
+
+// Scope: this gate is a first-attempt reminder, not a shell or SQL parser and not
+// a security boundary. The rule is deliberately simple: a destructive SQL phrase
+// (drop table, delete from, truncate table) anywhere in a command line that also
+// runs a SQL client is challenged once. That reads quoted arguments, heredocs,
+// pipes and here-strings without parsing any of them, so it has no blind spot for
+// them. It over-challenges where the phrase is not actually executed (for example
+// `psql -c 'SELECT 1' && echo drop table x`); that costs one identical retry,
+// which is the accepted trade-off. A phrase in a command with no SQL client
+// (`grep "delete from" notes.txt`, `echo drop table`) is not challenged. It does
+// not follow variables, substitutions, functions, aliases or other wrappers.
+function hasDestructiveSqlInput(command) {
+  const text = String(command);
+  if (!SQL_DESTRUCTIVE_RE.test(text)) return false;
+  return (text.match(SEGMENT_RE) || []).some(isSqlClientSegment);
 }
 
 /**
@@ -267,10 +293,7 @@ function isDestructiveCommand(command) {
   const raw = String(command || '');
   if (!raw.trim()) return false;
 
-  const flattenedForSql = raw
-    .replace(/'(?:[^'\\]|\\.)*'/g, "''")
-    .replace(/"(?:[^"\\]|\\.)*"/g, '""');
-  if (SQL_DESTRUCTIVE_RE.test(flattenedForSql) || hasDestructiveSqlArgument(raw)) return true;
+  if (hasDestructiveSqlInput(raw)) return true;
 
   for (const segment of splitSegments(raw)) {
     if (isDestructiveFindExec(segment)) return true;
@@ -382,9 +405,15 @@ function checkAndMark(stateFile, key) {
 
 // --- gate messages -----------------------------------------------------
 
+// C1 controls, zero-width characters, bidirectional-text and line-separator
+// controls can reorder, split or hide part of an echoed file name or command, so
+// they are shown as visible \uXXXX escapes.
+const DISPLAY_CONTROL_RE = /[\u0080-\u009f\u061c\u200b-\u200f\u2028\u2029\u202a-\u202e\u2060\u2066-\u2069\ufeff]/g;
+
 function sanitizeForMessage(value) {
   return String(value || '')
     .replace(/[\x00-\x1f\x7f]/g, ' ')
+    .replace(DISPLAY_CONTROL_RE, ch => '\\u' + ch.charCodeAt(0).toString(16).padStart(4, '0'))
     .trim()
     .slice(0, 500);
 }
@@ -497,17 +526,15 @@ function run(rawInput) {
   }
 
   if (toolName === 'MultiEdit') {
-    const edits = Array.isArray(toolInput.edits) ? toolInput.edits : [];
-    for (const edit of edits) {
-      const filePath = edit && edit.file_path;
-      if (!filePath) continue;
-      const result = checkAndMark(stateFile, filePath);
-      if (result === 'checked') continue;
-      if (result !== 'new') return emitAbstain();
+    // The host's MultiEdit payload is { file_path, edits: [{ old_string,
+    // new_string, ... }] }: one file per call, the path at the top level and
+    // no per-edit file_path.
+    const filePath = toolInput.file_path || '';
+    if (!filePath) return emitAbstain();
 
-      return emitDeny(fileGateMessage('edit', filePath));
-    }
-    return emitAbstain();
+    if (checkAndMark(stateFile, filePath) !== 'new') return emitAbstain();
+
+    return emitDeny(fileGateMessage('edit', filePath));
   }
 
   if (toolName === 'Bash') {

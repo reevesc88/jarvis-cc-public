@@ -110,12 +110,31 @@ export function DataLoader<T>({ url, children }: DataLoaderProps<T>) {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<Error | null>(null)
 
+  // The latest committed url, updated in a layout effect so an abandoned
+  // concurrent render cannot change it. A response checks it before writing
+  // state, because effect cleanup (abort) runs after paint and a queued
+  // continuation of the old request can run first.
+  const urlRef = useRef(url)
+  useLayoutEffect(() => { urlRef.current = url }, [url])
+
   useEffect(() => {
-    fetch(url)
+    // Abort the previous request when url changes or the component unmounts,
+    // so a slow older response cannot overwrite newer state.
+    const controller = new AbortController()
+    const isCurrent = () => !controller.signal.aborted && urlRef.current === url
+    setLoading(true)
+    setError(null)
+    fetch(url, { signal: controller.signal })
       .then(res => res.json())
-      .then(setData)
-      .catch(setError)
-      .finally(() => setLoading(false))
+      .then(result => { if (isCurrent()) setData(result) })
+      .catch(err => {
+        // An aborted request is no longer current, so it never reaches setError.
+        if (isCurrent()) setError(err instanceof Error ? err : new Error(String(err)))
+      })
+      .finally(() => {
+        if (isCurrent()) setLoading(false)
+      })
+    return () => controller.abort()
   }, [url])
 
   return <>{children(data, loading, error)}</>
@@ -179,24 +198,42 @@ export function useQuery<T>(
     optionsRef.current = options
   })
 
+  // Only the most recent request may write state. Without this guard a slow
+  // older response (a previous key, or an earlier refetch) can land last and
+  // overwrite newer data. Bumping the id on unmount also drops late responses.
+  const requestIdRef = useRef(0)
+  useLayoutEffect(() => () => { requestIdRef.current++ }, [])
+
   const refetch = useCallback(async () => {
+    const requestId = ++requestIdRef.current
+    const isCurrent = () => requestId === requestIdRef.current
     setLoading(true)
     setError(null)
 
     try {
       const result = await fetcherRef.current()
+      if (!isCurrent()) return
       setData(result)
       optionsRef.current?.onSuccess?.(result)
     } catch (err) {
+      if (!isCurrent()) return
       const error = err as Error
       setError(error)
       optionsRef.current?.onError?.(error)
     } finally {
-      setLoading(false)
+      if (isCurrent()) setLoading(false)
     }
   }, [])
 
   const enabled = options?.enabled !== false
+
+  // Layout-timed, so the old request is invalidated when the new key commits,
+  // before any queued continuation of that request can run. This also covers the
+  // disabled case, where no refetch starts.
+  useLayoutEffect(() => {
+    requestIdRef.current++
+    if (!enabled) setLoading(false)
+  }, [key, enabled])
 
   useEffect(() => {
     if (enabled) {

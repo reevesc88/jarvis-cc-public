@@ -247,7 +247,7 @@ function segmentClient(segment) {
     tokens.shift();
     while (ENV_ASSIGNMENT_RE.test(tokens[0] || '')) tokens.shift();
   }
-  return { client: baseCommand(tokens[0]), tokens };
+  return { client: baseCommand(String(tokens[0] || '').replace(/^['"]|['"]$/g, '')), tokens };
 }
 
 // Recognize common SQL CLI argument forms only. This is not a shell parser.
@@ -288,6 +288,10 @@ function stripShellComment(line) {
   return line;
 }
 
+// Scope: this gate is a first-attempt reminder, not a shell parser or a security
+// boundary. It reads plain pipes, heredocs, redirections and comments, and does
+// not follow variables, substitutions, functions, aliases or other wrappers. An
+// over-challenge costs one identical retry, so ambiguity resolves toward challenging.
 // Destructive SQL words count only where a SQL client can execute them: in the
 // client's own segment (quoted arguments included, since `sqlite3 db 'DROP TABLE
 // t'` runs its quoted argument), in a heredoc attached to that same segment, or
@@ -297,13 +301,17 @@ function stripShellComment(line) {
 // and `echo drop table` are not challenged.
 function hasDestructiveSqlInput(command) {
   const lines = String(command).split(/\r?\n/);
+  const heredocRe = /(?<!<)<<(?!<)-?\s*(['"]?)([^\s'"<>;|&()]+)\1/g;
   for (let n = 0; n < lines.length; n++) {
-    const pieces = stripShellComment(lines[n]).replace(/\d*[<>]&\d*-?|&>>?/g, ' ').match(/(?:'(?:[^'\\]|\\.)*'|"(?:[^"\\]|\\.)*"|[^;|&])+|[;|&]+/g) || [];
+    let line = stripShellComment(lines[n]);
+    // A line ending in a pipe or && / || continues on the next line.
+    while (/(?:\|\|?|&&)\s*$/.test(line) && !/(?<!<)<<(?!<)/.test(line) && n + 1 < lines.length) line += ' ' + stripShellComment(lines[++n]);
+    const pieces = line.replace(/\d*[<>]&\d*-?|&>>?/g, ' ').match(/(?:'(?:[^'\\]|\\.)*'|"(?:[^"\\]|\\.)*"|[^;|&])+|[;|&]+/g) || [];
     const bodies = pieces.map(() => '');
     // Every heredoc declared on this line, in shell order; bodies follow in that order.
     const declarations = [];
     pieces.forEach((piece, index) => {
-      for (const m of piece.matchAll(/<<-?\s*(['"]?)([A-Za-z_][A-Za-z0-9_]*)\1/g)) declarations.push({ index, delimiter: m[2] });
+      for (const m of piece.matchAll(heredocRe)) declarations.push({ index, delimiter: m[2] });
     });
     let next = n + 1;
     for (const { index, delimiter } of declarations) {
@@ -317,12 +325,24 @@ function hasDestructiveSqlInput(command) {
     for (let i = 0; i < pieces.length; i++) {
       if (/^[;|&]+$/.test(pieces[i]) || !SQL_CLIENTS.has(segmentClient(pieces[i]).client)) continue;
       // The client plus every contiguous upstream pipeline stage.
-      const scope = [stripRedirections(pieces[i]), bodies[i]];
+      const scope = [clientScope(pieces[i]), bodies[i]];
       for (let j = i; j >= 2 && isPipe(pieces[j - 1]); j -= 2) scope.push(stripRedirections(pieces[j - 2]), bodies[j - 2]);
-      if (SQL_DESTRUCTIVE_RE.test(scope.join('\n'))) return true;
+      const text = scope.join('\n').replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/(^|\s)--(\s[^\n]*|$)/gm, ' ');
+      if (SQL_DESTRUCTIVE_RE.test(text)) return true;
     }
   }
   return false;
+}
+
+// The client's own invocation without redirection operands and, for sqlite3, the
+// database operand (its first non-option argument), which is a file name.
+function clientScope(piece) {
+  const { client, tokens } = segmentClient(stripRedirections(piece));
+  if (client === 'sqlite3') {
+    const db = tokens.findIndex((token, i) => i > 0 && !token.startsWith('-'));
+    if (db > 0) tokens.splice(db, 1);
+  }
+  return tokens.join(' ');
 }
 
 /**

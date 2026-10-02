@@ -110,11 +110,12 @@ export function DataLoader<T>({ url, children }: DataLoaderProps<T>) {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<Error | null>(null)
 
-  // The latest url, assigned during render. A response checks it before writing
+  // The latest committed url, updated in a layout effect so an abandoned
+  // concurrent render cannot change it. A response checks it before writing
   // state, because effect cleanup (abort) runs after paint and a queued
   // continuation of the old request can run first.
   const urlRef = useRef(url)
-  urlRef.current = url
+  useLayoutEffect(() => { urlRef.current = url }, [url])
 
   useEffect(() => {
     // Abort the previous request when url changes or the component unmounts,
@@ -200,7 +201,7 @@ export function useQuery<T>(
   // older response (a previous key, or an earlier refetch) can land last and
   // overwrite newer data. Bumping the id on unmount also drops late responses.
   const requestIdRef = useRef(0)
-  useEffect(() => () => { requestIdRef.current++ }, [])
+  useLayoutEffect(() => () => { requestIdRef.current++ }, [])
 
   const refetch = useCallback(async () => {
     const requestId = ++requestIdRef.current

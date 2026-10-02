@@ -266,6 +266,13 @@ function hasDestructiveSqlArgument(command) {
   return false;
 }
 
+// Removes redirection operands (`> out.log`, `2>&1`, `< in.sql`) so a file name is
+// not mistaken for SQL. Heredocs (`<<`) and here-strings (`<<<`) are kept: they
+// carry SQL input.
+function stripRedirections(segment) {
+  return segment.replace(/\d*(?:>>?&?|(?<!<)<(?!<))\s*(?:'(?:[^'\\]|\\.)*'|"(?:[^"\\]|\\.)*"|[^\s;|&]+)/g, ' ');
+}
+
 // Drops an unquoted shell comment (`# ...` at a word boundary) from one line.
 function stripShellComment(line) {
   let quote = '';
@@ -291,21 +298,28 @@ function stripShellComment(line) {
 function hasDestructiveSqlInput(command) {
   const lines = String(command).split(/\r?\n/);
   for (let n = 0; n < lines.length; n++) {
-    const pieces = stripShellComment(lines[n]).match(/(?:'(?:[^'\\]|\\.)*'|"(?:[^"\\]|\\.)*"|[^;|&])+|[;|&]+/g) || [];
+    const pieces = stripShellComment(lines[n]).replace(/\d*[<>]&\d*-?|&>>?/g, ' ').match(/(?:'(?:[^'\\]|\\.)*'|"(?:[^"\\]|\\.)*"|[^;|&])+|[;|&]+/g) || [];
     const bodies = pieces.map(() => '');
-    const owner = pieces.findIndex(piece => /<<-?\s*(['"]?)[A-Za-z_][A-Za-z0-9_]*\1/.test(piece));
-    if (owner >= 0) {
-      const delimiter = pieces[owner].match(/<<-?\s*(['"]?)([A-Za-z_][A-Za-z0-9_]*)\1/)[2];
-      let end = n + 1;
-      while (end < lines.length && lines[end].trim() !== delimiter) end++;
-      bodies[owner] = lines.slice(n + 1, end).join('\n');
-      n = end;
+    // Every heredoc declared on this line, in shell order; bodies follow in that order.
+    const declarations = [];
+    pieces.forEach((piece, index) => {
+      for (const m of piece.matchAll(/<<-?\s*(['"]?)([A-Za-z_][A-Za-z0-9_]*)\1/g)) declarations.push({ index, delimiter: m[2] });
+    });
+    let next = n + 1;
+    for (const { index, delimiter } of declarations) {
+      const start = next;
+      while (next < lines.length && lines[next].trim() !== delimiter) next++;
+      bodies[index] += (bodies[index] ? '\n' : '') + lines.slice(start, next).join('\n');
+      next++;
     }
+    if (declarations.length) n = Math.max(n, next - 1);
+    const isPipe = piece => piece === '|' || piece === '|&';
     for (let i = 0; i < pieces.length; i++) {
       if (/^[;|&]+$/.test(pieces[i]) || !SQL_CLIENTS.has(segmentClient(pieces[i]).client)) continue;
-      const feeder = i >= 2 && pieces[i - 1] === '|' ? i - 2 : -1;
-      const scope = [pieces[i], bodies[i], feeder >= 0 ? pieces[feeder] : '', feeder >= 0 ? bodies[feeder] : ''].join('\n');
-      if (SQL_DESTRUCTIVE_RE.test(scope)) return true;
+      // The client plus every contiguous upstream pipeline stage.
+      const scope = [stripRedirections(pieces[i]), bodies[i]];
+      for (let j = i; j >= 2 && isPipe(pieces[j - 1]); j -= 2) scope.push(stripRedirections(pieces[j - 2]), bodies[j - 2]);
+      if (SQL_DESTRUCTIVE_RE.test(scope.join('\n'))) return true;
     }
   }
   return false;

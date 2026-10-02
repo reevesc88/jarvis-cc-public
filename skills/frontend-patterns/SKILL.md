@@ -110,20 +110,27 @@ export function DataLoader<T>({ url, children }: DataLoaderProps<T>) {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<Error | null>(null)
 
+  // The latest url, assigned during render. A response checks it before writing
+  // state, because effect cleanup (abort) runs after paint and a queued
+  // continuation of the old request can run first.
+  const urlRef = useRef(url)
+  urlRef.current = url
+
   useEffect(() => {
     // Abort the previous request when url changes or the component unmounts,
     // so a slow older response cannot overwrite newer state.
     const controller = new AbortController()
+    const isCurrent = () => !controller.signal.aborted && urlRef.current === url
     setLoading(true)
     setError(null)
     fetch(url, { signal: controller.signal })
       .then(res => res.json())
-      .then(setData)
+      .then(result => { if (isCurrent()) setData(result) })
       .catch(err => {
-        if (err.name !== 'AbortError') setError(err)
+        if (err.name !== 'AbortError' && isCurrent()) setError(err)
       })
       .finally(() => {
-        if (!controller.signal.aborted) setLoading(false)
+        if (isCurrent()) setLoading(false)
       })
     return () => controller.abort()
   }, [url])

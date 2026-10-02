@@ -218,14 +218,17 @@ export function useQuery<T>(
 
   const enabled = options?.enabled !== false
 
-  useEffect(() => {
-    // Invalidate any request still pending for the previous key, even when
-    // fetching is disabled, so it cannot commit stale data or an error.
+  // Layout-timed, so the old request is invalidated when the new key commits,
+  // before any queued continuation of that request can run. This also covers the
+  // disabled case, where no refetch starts.
+  useLayoutEffect(() => {
     requestIdRef.current++
+    if (!enabled) setLoading(false)
+  }, [key, enabled])
+
+  useEffect(() => {
     if (enabled) {
       refetch()
-    } else {
-      setLoading(false)
     }
   }, [key, enabled, refetch])
 

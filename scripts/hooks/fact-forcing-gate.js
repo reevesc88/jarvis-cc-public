@@ -266,30 +266,45 @@ function hasDestructiveSqlArgument(command) {
   return false;
 }
 
-function flattenQuotes(text) {
-  return text.replace(/'(?:[^'\\]|\\.)*'/g, "''").replace(/"(?:[^"\\]|\\.)*"/g, '""');
+// Drops an unquoted shell comment (`# ...` at a word boundary) from one line.
+function stripShellComment(line) {
+  let quote = '';
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i];
+    if (quote) {
+      if (ch === '\\' && quote === '"') i++;
+      else if (ch === quote) quote = '';
+    } else if (ch === "'" || ch === '"') quote = ch;
+    else if (ch === '\\') i++;
+    else if (ch === '#' && (i === 0 || /\s/.test(line[i - 1]))) return line.slice(0, i);
+  }
+  return line;
 }
 
 // Destructive SQL words count only where a SQL client can execute them: in the
-// client's own segment, in a heredoc attached to that segment, or in the segment
-// piped into it. `psql -c 'SELECT 1' && echo drop table x` is not challenged,
-// and neither are `grep "delete from" notes.txt` or `echo drop table`.
+// client's own segment (quoted arguments included, since `sqlite3 db 'DROP TABLE
+// t'` runs its quoted argument), in a heredoc attached to that same segment, or
+// in the segment piped into it (quoted text included, `echo 'DROP TABLE t' | psql`).
+// A heredoc feeding another command, or text after a comment mark, is not SQL
+// input. `psql -c 'SELECT 1' && echo drop table x`, `grep "delete from" notes.txt`
+// and `echo drop table` are not challenged.
 function hasDestructiveSqlInput(command) {
   const lines = String(command).split(/\r?\n/);
   for (let n = 0; n < lines.length; n++) {
-    const pieces = lines[n].match(/(?:'(?:[^'\\]|\\.)*'|"(?:[^"\\]|\\.)*"|[^;|&])+|[;|&]+/g) || [];
-    const heredoc = lines[n].match(/<<-?\s*(['"]?)([A-Za-z_][A-Za-z0-9_]*)\1/);
-    let body = '';
-    if (heredoc) {
+    const pieces = stripShellComment(lines[n]).match(/(?:'(?:[^'\\]|\\.)*'|"(?:[^"\\]|\\.)*"|[^;|&])+|[;|&]+/g) || [];
+    const bodies = pieces.map(() => '');
+    const owner = pieces.findIndex(piece => /<<-?\s*(['"]?)[A-Za-z_][A-Za-z0-9_]*\1/.test(piece));
+    if (owner >= 0) {
+      const delimiter = pieces[owner].match(/<<-?\s*(['"]?)([A-Za-z_][A-Za-z0-9_]*)\1/)[2];
       let end = n + 1;
-      while (end < lines.length && lines[end].trim() !== heredoc[2]) end++;
-      body = lines.slice(n + 1, end).join('\n');
+      while (end < lines.length && lines[end].trim() !== delimiter) end++;
+      bodies[owner] = lines.slice(n + 1, end).join('\n');
       n = end;
     }
     for (let i = 0; i < pieces.length; i++) {
       if (/^[;|&]+$/.test(pieces[i]) || !SQL_CLIENTS.has(segmentClient(pieces[i]).client)) continue;
-      const piped = i >= 2 && pieces[i - 1] === '|' ? flattenQuotes(pieces[i - 2]) : '';
-      const scope = [flattenQuotes(pieces[i]), piped, heredoc ? body : ''].join('\n');
+      const feeder = i >= 2 && pieces[i - 1] === '|' ? i - 2 : -1;
+      const scope = [pieces[i], bodies[i], feeder >= 0 ? pieces[feeder] : '', feeder >= 0 ? bodies[feeder] : ''].join('\n');
       if (SQL_DESTRUCTIVE_RE.test(scope)) return true;
     }
   }

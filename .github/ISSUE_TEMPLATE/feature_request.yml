@@ -1,0 +1,32 @@
+name: Feature or documentation request
+description: Suggest an improvement or a clearer beginner step.
+body:
+  - type: markdown
+    attributes:
+      value: |
+        All experience levels are welcome. Please check existing issues first.
+        This request is public. Do not include credentials, private paths or personal information.
+        Security vulnerabilities belong in [private reporting](https://github.com/reevesc88/jarvis-cc-public/security/advisories/new).
+  - type: textarea
+    id: problem
+    attributes:
+      label: What would you like to do?
+      description: Describe the task or the step that feels confusing.
+    validations:
+      required: true
+  - type: textarea
+    id: suggestion
+    attributes:
+      label: What would help?
+      description: A small example or wording suggestion is welcome; you do not need to design the solution.
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: Relevant host and version (optional)
+      description: Claude Code, Codex, or both? Include the JARVIS version or documentation link if relevant.
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives or extra context (optional)

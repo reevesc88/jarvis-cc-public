@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Report a security vulnerability privately
+    url: https://github.com/reevesc88/jarvis-cc-public/security/advisories/new
+    about: Do not post vulnerability details or secrets in a public issue.
+  - name: Installation and first-task guide
+    url: https://github.com/reevesc88/jarvis-cc-public#start-here
+    about: Start here if you are new to JARVIS, Claude Code or Codex.

@@ -150,6 +150,12 @@ JARVIS also retains an optional, disabled-by-default Agency validator. It checks
 
 Repository maintainers can read [how automated checks work](docs/repository-checks.md).
 
+## Community
+
+First-time contributors are welcome. Read the [contributing guide](CONTRIBUTING.md),
+[Code of Conduct](CODE_OF_CONDUCT.md), and [security reporting policy](SECURITY.md).
+You can help by asking a question, reporting a confusing step, or proposing a small fix.
+
 ## License
 
 MIT. See [third-party notices](THIRD_PARTY_NOTICES.md) for attribution and license terms. Several agents and skills are adapted from [ECC](https://github.com/affaan-m/ECC), also MIT-licensed. The Agency integration references the MIT-licensed Agency Agents catalog without redistributing its upstream prompt files.

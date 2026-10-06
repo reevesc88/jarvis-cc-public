@@ -37,7 +37,7 @@ This Code of Conduct applies within all community spaces, and also applies when 
 
 ## Enforcement
 
-Instances of abusive, harassing, or otherwise unacceptable behavior may be reported to the repository maintainer, [@reevesc88](https://github.com/reevesc88). To arrange a private reporting channel, [open an issue](https://github.com/reevesc88/jarvis-cc-public/issues/new) titled "Private conduct contact requested" without incident details, names, or identifying information. That request is public; share sensitive details only after a private channel has been agreed. Do not use security advisories for conduct reports. All complaints will be reviewed and investigated promptly and fairly.
+Instances of abusive, harassing, or otherwise unacceptable behavior may be reported privately to the repository maintainer by email at [calum@ai1auslutions.com](mailto:calum@ai1auslutions.com). This inbox is monitored by the maintainer. You do not need to open a public issue, and reports sent by email are kept private. Do not use security advisories for conduct reports. All complaints will be reviewed and investigated promptly and fairly.
 
 All community leaders are obligated to respect the privacy and security of the reporter of any incident.
 

@@ -66,9 +66,10 @@ def read_plugin_meta() -> dict:
     if PLUGIN_MANIFEST.is_file():
         try:
             data = json.loads(PLUGIN_MANIFEST.read_text(encoding="utf-8"))
-            meta["name"] = str(data.get("name", meta["name"]))
-            meta["version"] = str(data.get("version", ""))
-            meta["license"] = str(data.get("license", ""))
+            if isinstance(data, dict):
+                meta["name"] = str(data.get("name", meta["name"]))
+                meta["version"] = str(data.get("version", ""))
+                meta["license"] = str(data.get("license", ""))
         except (json.JSONDecodeError, OSError):
             pass
     return meta
@@ -89,8 +90,11 @@ def scan_rules(rules_dir: Path) -> list[str]:
     items: list[str] = []
     subdirs = sorted((p for p in rules_dir.iterdir() if p.is_dir()), key=lambda p: p.name.lower())
     for sub in subdirs:
-        for md in sorted(sub.glob("*.md"), key=lambda p: p.name.lower()):
-            items.append(f"{sub.name}/{md.stem}")
+        items.extend(
+            f"{sub.name}/{md.stem}"
+            for md in sorted(sub.glob("*.md"), key=lambda p: p.name.lower())
+            if md.is_file()
+        )
     return items
 
 

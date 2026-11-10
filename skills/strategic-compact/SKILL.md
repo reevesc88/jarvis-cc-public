@@ -46,13 +46,13 @@ Use this table to decide when to compact:
 
 ## What Survives Compaction
 
-Understanding what persists helps you compact with confidence:
+Retention across compaction is host-dependent; discover and verify your active host's configuration rather than assuming a fixed memory path or store:
 
-| Persists | Lost |
+| Persists (when configured in the active host) | Lost |
 |----------|------|
-| CLAUDE.md instructions | Intermediate reasoning and analysis |
-| TodoWrite task list | File contents you previously read |
-| Memory files (`~/.claude/memory/`) | Multi-step conversation context |
+| Project instructions (`CLAUDE.md` or `AGENTS.md`) | Intermediate reasoning and analysis |
+| Host task list (e.g. `TodoWrite`, when supported) | File contents you previously read |
+| Host-configured memory files (host-dependent; discover the configured path, e.g. `~/.claude/memory/` in Claude Code when enabled) | Multi-step conversation context |
 | Git state (commits, branches) | Tool call history and counts |
 | Files on disk | Nuanced user preferences stated verbally |
 

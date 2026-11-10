@@ -111,11 +111,14 @@ export function DataLoader<T>({ url, children }: DataLoaderProps<T>) {
   const [error, setError] = useState<Error | null>(null)
 
   // The latest committed url, updated in a layout effect so an abandoned
-  // concurrent render cannot change it. A response checks it before writing
-  // state, because effect cleanup (abort) runs after paint and a queued
-  // continuation of the old request can run first.
-  const urlRef = useRef(url)
-  useLayoutEffect(() => { urlRef.current = url }, [url])
+  // concurrent render cannot change it, and cleared on unmount. A response
+  // checks it before writing state, because effect cleanup (abort) runs after
+  // paint and a queued continuation of the old request can run first.
+  const urlRef = useRef<string | null>(url)
+  useLayoutEffect(() => {
+    urlRef.current = url
+    return () => { urlRef.current = null }
+  }, [url])
 
   useEffect(() => {
     // Abort the previous request when url changes or the component unmounts,
@@ -193,7 +196,7 @@ export function useQuery<T>(
   // re-runs after each state update - an infinite fetch loop.
   const fetcherRef = useRef(fetcher)
   const optionsRef = useRef(options)
-  useEffect(() => {
+  useLayoutEffect(() => {
     fetcherRef.current = fetcher
     optionsRef.current = options
   })
@@ -217,7 +220,7 @@ export function useQuery<T>(
       optionsRef.current?.onSuccess?.(result)
     } catch (err) {
       if (!isCurrent()) return
-      const error = err as Error
+      const error = err instanceof Error ? err : new Error(String(err))
       setError(error)
       optionsRef.current?.onError?.(error)
     } finally {

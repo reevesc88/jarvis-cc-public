@@ -7,8 +7,16 @@ description: Playwright E2E testing patterns, Page Object Model, configuration, 
 
 Before invoking a CLI, inspect the project manifest and resolve its existing local executable. The `./node_modules/.bin/` examples below are for Bash and fail if the executable is absent; do not fall back to a registry runner. In PowerShell, use the verified `.cmd` shim where applicable. For other package layouts, inspect and use an existing project script or resolved executable. A local executable can itself perform network or write operations; its location grants no authorization for those actions.
 
-
 Comprehensive Playwright patterns for building stable, fast, and maintainable E2E test suites.
+
+## Installation (Pinned Toolchain)
+
+```bash
+# After installation is authorized, select a reviewed version compatible with your project:
+npm install --save-dev --save-exact @playwright/test@<reviewed-version>
+# Commit the lockfile; replace <reviewed-version> before installing browsers or running tests:
+./node_modules/.bin/playwright install --with-deps
+```
 
 ## Test File Organization
 
@@ -34,7 +42,7 @@ tests/
 ## Page Object Model (POM)
 
 ```typescript
-import { Page, Locator } from '@playwright/test'
+import { expect, Page, Locator } from '@playwright/test'
 
 export class ItemsPage {
   readonly page: Page
@@ -51,14 +59,13 @@ export class ItemsPage {
 
   async goto() {
     await this.page.goto('/items')
-    await this.page.waitForLoadState('networkidle')
+    await expect(this.searchInput).toBeVisible()
   }
 
   async search(query: string) {
     const response = this.page.waitForResponse(resp => resp.url().includes('/api/search'))
     await this.searchInput.fill(query)
     await response
-    await this.page.waitForLoadState('networkidle')
   }
 
   async getItemCount() {
@@ -105,6 +112,16 @@ test.describe('Item Search', () => {
 ```typescript
 import { defineConfig, devices } from '@playwright/test'
 
+const baseURL = process.env.BASE_URL || 'http://localhost:3000'
+const isLocalTarget = (() => {
+  try {
+    const { hostname } = new URL(baseURL)
+    return hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '::1' || hostname === '[::1]'
+  } catch {
+    return false
+  }
+})()
+
 export default defineConfig({
   testDir: './tests/e2e',
   fullyParallel: true,
@@ -117,7 +134,7 @@ export default defineConfig({
     ['json', { outputFile: 'playwright-results.json' }]
   ],
   use: {
-    baseURL: process.env.BASE_URL || 'http://localhost:3000',
+    baseURL,
     trace: 'on-first-retry',
     screenshot: 'only-on-failure',
     video: 'retain-on-failure',
@@ -130,12 +147,14 @@ export default defineConfig({
     { name: 'webkit', use: { ...devices['Desktop Safari'] } },
     { name: 'mobile-chrome', use: { ...devices['Pixel 5'] } },
   ],
-  webServer: {
-    command: 'npm run dev',
-    url: 'http://localhost:3000',
-    reuseExistingServer: !process.env.CI,
-    timeout: 120000,
-  },
+  webServer: isLocalTarget
+    ? {
+        command: 'npm run dev',
+        url: baseURL,
+        reuseExistingServer: !process.env.CI,
+        timeout: 120000,
+      }
+    : undefined,
 })
 ```
 
@@ -184,13 +203,13 @@ await page.waitForResponse(resp => resp.url().includes('/api/data'))
 
 **Animation timing:**
 ```typescript
-// Bad: click during animation
+// Bad: global network-idle wait (can time out on polling, SSE, or analytics)
 await page.click('[data-testid="menu-item"]')
 
-// Good: wait for stability
-await page.locator('[data-testid="menu-item"]').waitFor({ state: 'visible' })
-await page.waitForLoadState('networkidle')
-await page.locator('[data-testid="menu-item"]').click()
+// Good: assert UI state and rely on locator actionability (which waits for stability)
+const menuItem = page.locator('[data-testid="menu-item"]')
+await expect(menuItem).toBeVisible()
+await menuItem.click()
 ```
 
 ## Artifact Management
@@ -228,6 +247,8 @@ export default defineConfig({
 
 ## CI/CD Integration
 
+Illustrative cookbook snippet (not an active workflow in this repository). Keep `@playwright/test` pinned with `--save-exact` in `package.json` and locked in `package-lock.json`, and pin every GitHub Action to a reviewed full commit SHA:
+
 ```yaml
 # .github/workflows/e2e.yml
 name: E2E Tests
@@ -237,8 +258,8 @@ jobs:
   test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 20
       - run: npm ci
@@ -246,7 +267,7 @@ jobs:
       - run: ./node_modules/.bin/playwright test
         env:
           BASE_URL: ${{ vars.STAGING_URL }}
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         if: always()
         with:
           name: playwright-report

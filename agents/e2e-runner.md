@@ -49,15 +49,15 @@ agent-browser screenshot result.png
 
 ## Fallback: Playwright
 
-When Agent Browser isn't available, use Playwright directly.
+When Agent Browser isn't available, use the project's locally installed Playwright executable directly (do not fall back to a registry runner).
 
 ```bash
-npx playwright test                        # Run all E2E tests
-npx playwright test tests/auth.spec.ts     # Run specific file
-npx playwright test --headed               # See browser
-npx playwright test --debug                # Debug with inspector
-npx playwright test --trace on             # Run with trace
-npx playwright show-report                 # View HTML report
+./node_modules/.bin/playwright test                        # Run all E2E tests
+./node_modules/.bin/playwright test tests/auth.spec.ts     # Run specific file
+./node_modules/.bin/playwright test --headed               # See browser
+./node_modules/.bin/playwright test --debug                # Debug with inspector
+./node_modules/.bin/playwright test --trace on             # Run with trace
+./node_modules/.bin/playwright show-report                 # View HTML report
 ```
 
 ## Workflow
@@ -97,10 +97,10 @@ test('flaky: market search', async ({ page }) => {
 })
 
 // Identify flakiness
-// npx playwright test --repeat-each=10
+// ./node_modules/.bin/playwright test --repeat-each=10
 ```
 
-Common causes: race conditions (use auto-wait locators), network timing (wait for response), animation timing (wait for `networkidle`).
+Common causes: race conditions (use auto-wait locators), network timing (wait for response), animation timing (assert visible UI state and rely on locator actionability rather than global network-idle waits).
 
 ## Success Metrics
 

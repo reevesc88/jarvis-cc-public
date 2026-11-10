@@ -71,7 +71,8 @@ CREATE INDEX CONCURRENTLY idx_users_email ON users (email);
 -- migration file with several statements is usually sent as one query
 -- string, which PostgreSQL runs in an implicit transaction. Put the
 -- CREATE INDEX CONCURRENTLY statement alone in its own migration file,
--- with no BEGIN/COMMIT, and check how your tool handles transactions.
+-- with no BEGIN/COMMIT, and verify transaction handling against your
+-- migration tool, database driver, and version.
 ```
 
 ### Renaming a Column (Zero-Downtime)
@@ -135,6 +136,15 @@ END $$;
 
 ## Prisma (TypeScript/Node.js)
 
+### Installation (Pinned Toolchain)
+
+```bash
+# After installation is authorized, select reviewed versions compatible with your project:
+npm install --save-dev --save-exact prisma@<reviewed-version>
+npm install --save-exact @prisma/client@<reviewed-version>
+# Commit the lockfile; replace <reviewed-version> before running local CLI commands.
+```
+
 ### Workflow
 
 ```bash
@@ -170,7 +180,7 @@ model User {
 
 ### Custom SQL Migration
 
-For operations Prisma cannot express (concurrent indexes, data backfills):
+For operations Prisma cannot express (concurrent indexes, data backfills). Prisma Migrate has no general per-migration no-transaction switch, and statement splitting/transaction behavior varies across Prisma versions — keep `CREATE INDEX CONCURRENTLY` as the sole statement in its own `migration.sql` file and verify against your pinned Prisma version:
 
 ```bash
 # Create empty migration, then edit the SQL manually
@@ -179,13 +189,26 @@ For operations Prisma cannot express (concurrent indexes, data backfills):
 
 ```sql
 -- migrations/20240115_add_email_index/migration.sql
--- Prisma cannot generate CONCURRENTLY, so we write it manually.
--- Keep this as the ONLY statement in the file: CONCURRENTLY fails inside
--- a transaction block, and a multi-statement file runs in an implicit one.
+-- Prisma has no general no-transaction switch. Keep this as the ONLY
+-- statement in the file (no other DDL, SET, or BEGIN/COMMIT): CONCURRENTLY
+-- fails inside a transaction block. Do not rely on an implicit transaction
+-- either way: depending on the Prisma version, a multi-statement file may run
+-- in one transaction or be split into separate statements, so a later failure
+-- can leave earlier statements committed. Verify against your pinned Prisma
+-- version before deploying.
 CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_users_email ON users (email);
 ```
 
 ## Drizzle (TypeScript/Node.js)
+
+### Installation (Pinned Toolchain)
+
+```bash
+# After installation is authorized, select reviewed versions compatible with your project:
+npm install --save-dev --save-exact drizzle-kit@<reviewed-version>
+npm install --save-exact drizzle-orm@<reviewed-version>
+# Commit the lockfile; replace <reviewed-version> before running local CLI commands.
+```
 
 ### Workflow
 
@@ -389,6 +412,8 @@ migrate -path migrations -database "$DATABASE_URL" force VERSION
 
 ### Migration Files
 
+In `golang-migrate`, the PostgreSQL drivers (`postgres`, `pgx`/`pgx/v5`) execute each migration file in a single `Exec` by default (unless `x-multi-statement` is enabled), which PostgreSQL wraps in an implicit transaction when multiple statements are present. Do not rely on `x-no-tx-wrap` for PostgreSQL — that parameter applies only to the `sqlite`/`sqlite3`/`sqlcipher` drivers. Place `ALTER TABLE` and `CREATE INDEX CONCURRENTLY` in separate migration files and verify behavior against your selected driver and version:
+
 ```sql
 -- migrations/000003_add_user_avatar.up.sql
 ALTER TABLE users ADD COLUMN avatar_url TEXT;
@@ -397,8 +422,9 @@ ALTER TABLE users ADD COLUMN avatar_url TEXT;
 ALTER TABLE users DROP COLUMN IF EXISTS avatar_url;
 
 -- migrations/000004_add_user_avatar_index.up.sql
--- Its own file: CONCURRENTLY cannot run in a multi-statement (implicit
--- transaction) file, so do not combine it with the ALTER TABLE above.
+-- Separate file: CONCURRENTLY cannot run in a multi-statement (implicit
+-- transaction) file, and golang-migrate's PostgreSQL drivers do not support
+-- x-no-tx-wrap (SQLite-only). Verify against your selected driver/version.
 CREATE INDEX CONCURRENTLY idx_users_avatar ON users (avatar_url) WHERE avatar_url IS NOT NULL;
 
 -- migrations/000004_add_user_avatar_index.down.sql

@@ -63,10 +63,13 @@ class ScannerFallbackTests(unittest.TestCase):
         write(self.root / "skills" / "dir-b" / "SKILL.md", "no frontmatter here\n")
         write(self.root / "skills" / "dir-c" / "SKILL.md", "---\ndescription: no name\n---\n")
         write(self.root / "skills" / "dir-d" / "SKILL.md", "---\nname: unterminated\n")
+        write(self.root / "skills" / "dir-f" / "SKILL.md", "---\nname: ''\n---\n")
+        write(self.root / "skills" / "dir-g" / "SKILL.md", "---\nname: 'Single Quoted'\n---\n")
         (self.root / "skills" / "dir-e").mkdir()  # no SKILL.md: skipped
+        self.assertIsNone(dash.extract_skill_name(self.root / "skills" / "missing" / "SKILL.md"))
         self.assertEqual(
             dash.scan_skills(self.root / "skills"),
-            ["dir-b", "dir-c", "dir-d", "Named Skill"],
+            ["dir-b", "dir-c", "dir-d", "dir-f", "Named Skill", "Single Quoted"],
         )
 
     def test_malformed_or_oddly_shaped_hooks_file_is_skipped(self):
@@ -74,29 +77,48 @@ class ScannerFallbackTests(unittest.TestCase):
         self.assertEqual(dash.scan_hooks(bad), [])
         listy = write(self.root / "list.json", json.dumps(["x"]))
         self.assertEqual(dash.scan_hooks(listy), [])
+        non_dict_hooks = write(self.root / "non-dict.json", json.dumps({"hooks": ["x"]}))
+        self.assertEqual(dash.scan_hooks(non_dict_hooks), [])
         odd = write(self.root / "odd.json", json.dumps({"hooks": {"PreToolUse": "nope"}}))
         self.assertEqual(dash.scan_hooks(odd), [])
 
     def test_hooks_list_matchers_with_wildcard_default(self):
         hooks = write(
             self.root / "hooks.json",
-            json.dumps({"hooks": {"PreToolUse": [{"matcher": "Edit|Write"}, {}], "SessionStart": [{}]}}),
+            json.dumps(
+                {
+                    "hooks": {
+                        "PreToolUse": [{"matcher": "Edit|Write"}, {}, "non-dict-entry"],
+                        "SessionStart": [{}],
+                    }
+                }
+            ),
         )
         self.assertEqual(
             dash.scan_hooks(hooks),
-            ["PreToolUse: Edit|Write", "PreToolUse: *", "SessionStart: *"],
+            ["PreToolUse: Edit|Write", "PreToolUse: *", "PreToolUse: *", "SessionStart: *"],
         )
+        top_level = write(
+            self.root / "top-level-hooks.json",
+            json.dumps({"PostToolUse": [{"matcher": "Bash"}]}),
+        )
+        self.assertEqual(dash.scan_hooks(top_level), ["PostToolUse: Bash"])
 
     def test_rules_are_listed_per_subfolder_and_ignore_top_level_files(self):
         write(self.root / "rules" / "common" / "style.md", "x")
         write(self.root / "rules" / "python" / "tests.md", "x")
         write(self.root / "rules" / "README.md", "x")
+        (self.root / "rules" / "common" / "dir.md").mkdir(parents=True)
         self.assertEqual(dash.scan_rules(self.root / "rules"), ["common/style", "python/tests"])
 
     def test_plugin_meta_defaults_survive_a_broken_manifest(self):
         original = dash.PLUGIN_MANIFEST
         self.addCleanup(setattr, dash, "PLUGIN_MANIFEST", original)
+        dash.PLUGIN_MANIFEST = self.root / "missing-plugin.json"
+        self.assertEqual(dash.read_plugin_meta(), {"name": "jarvis-cc", "version": "", "license": ""})
         dash.PLUGIN_MANIFEST = write(self.root / "plugin.json", "{broken")
+        self.assertEqual(dash.read_plugin_meta(), {"name": "jarvis-cc", "version": "", "license": ""})
+        dash.PLUGIN_MANIFEST = write(self.root / "array-plugin.json", json.dumps(["not", "a", "dict"]))
         self.assertEqual(dash.read_plugin_meta(), {"name": "jarvis-cc", "version": "", "license": ""})
         dash.PLUGIN_MANIFEST = write(
             self.root / "plugin.json", json.dumps({"name": "x", "version": "1.2.3", "license": "MIT"})
@@ -131,6 +153,18 @@ class BuildCategoriesTests(unittest.TestCase):
             dash.build_categories(),
             [("Agents", ["A", "b"]), ("Commands", ["run"]), ("Skills", ["s"])],
         )
+
+
+class ShippedBundleDiscoveryTests(unittest.TestCase):
+    def test_shipped_repository_populates_every_dashboard_category(self):
+        meta = dash.read_plugin_meta()
+        self.assertEqual(meta["name"], "jarvis-cc")
+        self.assertTrue(meta["version"])
+        self.assertEqual(meta["license"], "MIT")
+        categories = dash.build_categories()
+        self.assertEqual([name for name, _ in categories], ["Agents", "Rules", "Commands", "Hooks", "Skills"])
+        for name, items in categories:
+            self.assertGreater(len(items), 0, f"{name} category should not be empty")
 
 
 if __name__ == "__main__":

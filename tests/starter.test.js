@@ -411,3 +411,329 @@ test('orphan memory filenames escape terminal direction controls', t => {
  assert.match(result.stdout,/orphaned: memory\//);
  assert.equal(result.stdout.includes(control),false);
 });
+
+test('frontend-patterns DataLoader and useQuery snippets prevent stale async request races', async () => {
+  const vm = require('node:vm');
+  const md = fs.readFileSync(path.join(root, 'skills/frontend-patterns/SKILL.md'), 'utf8');
+  const blocks = [...md.matchAll(/```typescript\n([\s\S]*?)```/g)].map(m => m[1]);
+  const dataLoaderBlock = blocks.find(b => b.includes('export function DataLoader'));
+  const useQueryBlock = blocks.find(b => b.includes('export function useQuery'));
+  assert.ok(dataLoaderBlock, 'DataLoader snippet present');
+  assert.ok(useQueryBlock, 'useQuery snippet present');
+
+  // Fail loudly when a documented signature changes, instead of leaving TypeScript
+  // in place and surfacing an unclear vm SyntaxError.
+  function mustReplace(code, pattern, replacement, label) {
+    assert.match(code, pattern, `stripTs: expected ${label} in the snippet`);
+    return code.replace(pattern, replacement);
+  }
+  function stripTs(code) {
+    let out = code
+      .replace(/interface\s+\w+(?:<[^>]+>)?\s*\{[\s\S]*?\n\}\n*/g, '')
+      .replace(/\/\/ Usage[\s\S]*$/m, '');
+    if (out.includes('export function DataLoader')) {
+      out = mustReplace(out, /export function DataLoader<T>\(\{\s*url,\s*children\s*\}:\s*DataLoaderProps<T>\)/, 'function DataLoader({ url, children })', 'DataLoader signature');
+      out = mustReplace(out, /return <>\{children\(data, loading, error\)\}<\/>/, 'return children(data, loading, error)', 'DataLoader JSX return');
+    }
+    if (out.includes('export function useQuery')) {
+      out = mustReplace(out, /export function useQuery<T>\(\s*key:\s*string,\s*fetcher:\s*\(\)\s*=>\s*Promise<T>,\s*options\?:\s*UseQueryOptions<T>\s*\)/, 'function useQuery(key, fetcher, options)', 'useQuery signature');
+    }
+    out = out
+      .replace(/useState<[^>]+>/g, 'useState')
+      .replace(/useRef<[^>]+>/g, 'useRef')
+      .replace(/\bas Error\b/g, '');
+    assert.doesNotMatch(out, /export function|<T>|:\s*(?:string|boolean|number)\b(?![^\n]*['"`])/, 'stripTs: TypeScript syntax left in the snippet');
+    return out;
+  }
+
+  function createHarness(fnSource, fnName) {
+    let slots = [];
+    let cursor = 0;
+    let pendingLayout = [];
+    let pendingPassive = [];
+    const depsEqual = (a, b) => Array.isArray(a) && Array.isArray(b) && a.length === b.length && a.every((v, i) => Object.is(v, b[i]));
+    const sandbox = {
+      Error, String, Object, Promise, AbortController,
+      useState(init) {
+        const idx = cursor++;
+        if (!(idx in slots)) slots[idx] = typeof init === 'function' ? init() : init;
+        const set = next => { slots[idx] = typeof next === 'function' ? next(slots[idx]) : next; };
+        return [slots[idx], set];
+      },
+      useRef(init) {
+        const idx = cursor++;
+        if (!(idx in slots)) slots[idx] = { current: init };
+        return slots[idx];
+      },
+      useCallback(cb, deps) {
+        const idx = cursor++;
+        if (!(idx in slots) || !depsEqual(slots[idx].deps, deps)) slots[idx] = { cb, deps };
+        return slots[idx].cb;
+      },
+      useLayoutEffect(effect, deps) {
+        const idx = cursor++;
+        const prev = slots[idx];
+        if (!prev || !deps || !depsEqual(prev.deps, deps)) {
+          pendingLayout.push(() => {
+            // Read the slot when the effect runs, not at render time, so a second
+            // render before the flush still cleans up the effect that actually ran.
+            const current = slots[idx];
+            if (current && typeof current.cleanup === 'function') current.cleanup();
+            const cleanup = effect();
+            slots[idx] = { deps, cleanup };
+          });
+        }
+      },
+      useEffect(effect, deps) {
+        const idx = cursor++;
+        const prev = slots[idx];
+        if (!prev || !deps || !depsEqual(prev.deps, deps)) {
+          pendingPassive.push(() => {
+            // Read the slot when the effect runs, not at render time, so a second
+            // render before the flush still cleans up the effect that actually ran.
+            const current = slots[idx];
+            if (current && typeof current.cleanup === 'function') current.cleanup();
+            const cleanup = effect();
+            slots[idx] = { deps, cleanup };
+          });
+        }
+      },
+    };
+    const fn = vm.runInNewContext(`${stripTs(fnSource)}\n${fnName};`, sandbox);
+    return {
+      sandbox,
+      render(...args) {
+        cursor = 0;
+        pendingLayout = [];
+        pendingPassive = [];
+        const out = fn(...args);
+        for (const run of pendingLayout.splice(0)) run();
+        return out;
+      },
+      flushEffects() {
+        for (const run of pendingPassive.splice(0)) run();
+      },
+      read(...args) {
+        cursor = 0;
+        pendingLayout = [];
+        pendingPassive = [];
+        return fn(...args);
+      },
+      unmount() {
+        for (const s of slots) {
+          if (s && typeof s.cleanup === 'function') {
+            const cleanup = s.cleanup;
+            s.cleanup = undefined;
+            cleanup();
+          }
+        }
+      },
+    };
+  }
+
+  function deferred() {
+    let resolve, reject;
+    const promise = new Promise((res, rej) => { resolve = res; reject = rej; });
+    return { promise, resolve, reject };
+  }
+
+  // 1. DataLoader: out-of-order response and pre-abort layout commit guard
+  const calls = [];
+  const loaderHarness = createHarness(dataLoaderBlock, 'DataLoader');
+  loaderHarness.sandbox.fetch = (url, { signal }) => {
+    const d = deferred();
+    calls.push({ url, signal, ...d });
+    return d.promise;
+  };
+  const renderLoader = url => loaderHarness.render({ url, children: (data, loading, error) => ({ data, loading, error }) });
+  const readLoader = url => loaderHarness.read({ url, children: (data, loading, error) => ({ data, loading, error }) });
+
+  renderLoader('/api/slow');
+  loaderHarness.flushEffects();
+  assert.equal(calls.length, 1);
+
+  // Switch URL to /api/fast: layout effect commits immediately before passive cleanup aborts /api/slow
+  renderLoader('/api/fast');
+  calls[0].resolve({ json: async () => 'stale-before-abort' });
+  await new Promise(r => setImmediate(r));
+  assert.equal(readLoader('/api/fast').data, null);
+
+  loaderHarness.flushEffects();
+  assert.equal(calls[0].signal.aborted, true);
+  assert.equal(calls.length, 2);
+
+  calls[1].resolve({ json: async () => 'fresh-fast' });
+  await new Promise(r => setImmediate(r));
+  assert.deepEqual(readLoader('/api/fast'), { data: 'fresh-fast', loading: false, error: null });
+
+  // Unmount while a third request is in flight: late error is ignored
+  renderLoader('/api/unmount');
+  loaderHarness.flushEffects();
+  loaderHarness.unmount();
+  assert.equal(calls[2].signal.aborted, true, 'unmount aborts the in-flight request');
+  calls[2].reject(new Error('late failure'));
+  await new Promise(r => setImmediate(r));
+  assert.equal(readLoader('/api/unmount').error, null);
+
+  // 2. useQuery: key change race, disabled invalidation, concurrent refetch, and unmount
+  const queryHarness = createHarness(useQueryBlock, 'useQuery');
+  const q1 = deferred();
+  const q2 = deferred();
+  const seen = [];
+  queryHarness.render('k1', () => q1.promise, { onSuccess: v => seen.push(['ok', v]), onError: e => seen.push(['err', e.message]) });
+  queryHarness.flushEffects();
+
+  // Change key to k2 and resolve k2 first, then resolve stale k1
+  queryHarness.render('k2', () => q2.promise, { onSuccess: v => seen.push(['ok', v]), onError: e => seen.push(['err', e.message]) });
+  queryHarness.flushEffects();
+  q2.resolve('value-2');
+  await new Promise(r => setImmediate(r));
+  q1.resolve('stale-1');
+  await new Promise(r => setImmediate(r));
+  const afterRace = queryHarness.read('k2', () => q2.promise, {});
+  assert.equal(afterRace.data, 'value-2');
+  assert.equal(afterRace.loading, false);
+  assert.deepEqual(seen, [['ok', 'value-2']]);
+
+  // Current-request rejections: an Error is kept as-is and a string is wrapped, both reach onError
+  const errSeen = [];
+  const errOpts = { onSuccess: v => errSeen.push(['ok', v]), onError: e => errSeen.push(['err', e instanceof Error, e.message]) };
+  const qe1 = deferred();
+  queryHarness.render('ke1', () => qe1.promise, errOpts);
+  queryHarness.flushEffects();
+  const boom = new Error('boom');
+  qe1.reject(boom);
+  await new Promise(r => setImmediate(r));
+  const afterError = queryHarness.read('ke1', () => qe1.promise, errOpts);
+  assert.equal(afterError.error, boom);
+  assert.equal(afterError.loading, false);
+  const qe2 = deferred();
+  queryHarness.render('ke2', () => qe2.promise, errOpts);
+  queryHarness.flushEffects();
+  qe2.reject('plain-string');
+  await new Promise(r => setImmediate(r));
+  const afterString = queryHarness.read('ke2', () => qe2.promise, errOpts);
+  assert.ok(afterString.error instanceof Error);
+  assert.equal(afterString.error.message, 'plain-string');
+  assert.equal(afterString.loading, false);
+  assert.deepEqual(errSeen, [['err', true, 'boom'], ['err', true, 'plain-string']]);
+
+  // Disable while k3 is pending: loading clears immediately and late rejection is dropped
+  const q3 = deferred();
+  queryHarness.render('k3', () => q3.promise, { enabled: true });
+  queryHarness.flushEffects();
+  assert.equal(queryHarness.read('k3', () => q3.promise, { enabled: true }).loading, true);
+  queryHarness.render('k3', () => q3.promise, { enabled: false });
+  assert.equal(queryHarness.read('k3', () => q3.promise, { enabled: false }).loading, false);
+  q3.reject('stale-string-error');
+  await new Promise(r => setImmediate(r));
+  assert.equal(queryHarness.read('k3', () => q3.promise, { enabled: false }).error, null);
+
+  // Manual concurrent refetch() calls: only the second refetch commits state, and unmount drops late completion
+  const r1 = deferred();
+  const r2 = deferred();
+  const r3 = deferred();
+  let callsCount = 0;
+  const seqFetcher = () => [r1.promise, r2.promise, r3.promise][callsCount++];
+  const state = queryHarness.render('k4', seqFetcher, { enabled: false });
+  const p1 = state.refetch();
+  const p2 = state.refetch();
+  r1.resolve('stale-refetch-1');
+  r2.resolve('fresh-refetch-2');
+  await Promise.all([p1, p2]);
+  assert.equal(queryHarness.read('k4', seqFetcher, { enabled: false }).data, 'fresh-refetch-2');
+
+  const p3 = queryHarness.read('k4', seqFetcher, { enabled: false }).refetch();
+  queryHarness.unmount();
+  r3.resolve('after-unmount');
+  await p3;
+  assert.equal(queryHarness.read('k4', seqFetcher, { enabled: false }).data, 'fresh-refetch-2');
+});
+
+test('e2e-testing playwright.config snippet enables webServer only for local targets and avoids networkidle', () => {
+  const vm = require('node:vm');
+  const e2eSkill = fs.readFileSync(path.join(root, 'skills/e2e-testing/SKILL.md'), 'utf8');
+  const e2eAgent = fs.readFileSync(path.join(root, 'agents/e2e-runner.md'), 'utf8');
+  assert.doesNotMatch(e2eSkill, /waitForLoadState\(['"]networkidle['"]\)/);
+  assert.doesNotMatch(e2eAgent, /wait for `networkidle`/);
+
+  const configMatch = e2eSkill.match(/## Playwright Configuration\s+```typescript\n([\s\S]*?)```/);
+  assert.ok(configMatch, 'Playwright configuration snippet present');
+  const executableConfig = configMatch[1]
+    .replace(/^import\s+.*$/gm, '')
+    .replace(/export default defineConfig/, 'module.exports = defineConfig');
+
+  function evalConfig(env) {
+    const mod = { exports: {} };
+    vm.runInNewContext(executableConfig, {
+      module: mod,
+      process: { env },
+      URL,
+      defineConfig: cfg => cfg,
+      devices: { 'Desktop Chrome': {}, 'Desktop Firefox': {}, 'Desktop Safari': {}, 'Pixel 5': {} },
+    });
+    return mod.exports;
+  }
+
+  const defaultCfg = evalConfig({});
+  assert.equal(defaultCfg.use.baseURL, 'http://localhost:3000');
+  assert.equal(defaultCfg.webServer?.url, 'http://localhost:3000');
+
+  const loopbackCfg = evalConfig({ BASE_URL: 'http://127.0.0.1:4173', CI: 'true' });
+  assert.equal(loopbackCfg.use.baseURL, 'http://127.0.0.1:4173');
+  assert.equal(loopbackCfg.webServer?.url, 'http://127.0.0.1:4173');
+  assert.equal(loopbackCfg.webServer?.reuseExistingServer, false);
+
+  const stagingCfg = evalConfig({ BASE_URL: 'https://staging.example.com', CI: 'true' });
+  assert.equal(stagingCfg.use.baseURL, 'https://staging.example.com');
+  assert.equal(stagingCfg.webServer, undefined);
+
+  // IPv6 loopback: WHATWG URL keeps the brackets on the hostname
+  const ipv6Cfg = evalConfig({ BASE_URL: 'http://[::1]:3000' });
+  assert.equal(ipv6Cfg.webServer?.url, 'http://[::1]:3000');
+
+  const invalidCfg = evalConfig({ BASE_URL: 'not a url' });
+  assert.equal(invalidCfg.webServer, undefined);
+});
+
+test('cookbook workflow snippets pin actions to full SHAs and document pinned installs and host-dependent memory', () => {
+  // Reviewed upstream commits (verified against each repository's release tag).
+  const reviewedActionCommits = {
+    'actions/checkout': { '11d5960a326750d5838078e36cf38b85af677262': 'v4.4.0' },
+    'actions/setup-node': { '49933ea5288caeca8642d1e84afbd3f7d6820020': 'v4.4.0' },
+    'actions/setup-python': { 'a26af69be951a213d495a4c3e4e4022e16d87065': 'v5.6.0' },
+    'actions/upload-artifact': { 'ea165f8d65b6e75b540449e92b4886f43607fa02': 'v4.6.2' },
+    'docker/setup-buildx-action': { 'b5ca514318bd6ebac0fb2aedd5d36ec1b5c232a2': 'v3.10.0' },
+    'docker/login-action': { '74a5d142397b4f367a81961eba4e8cd7edddf772': 'v3.4.0' },
+    'docker/build-push-action': { 'ca052bb54ab0790a636c9b5f226502c73d547a25': 'v5.4.0' },
+  };
+  for (const rel of ['skills/e2e-testing/SKILL.md', 'skills/deployment-patterns/SKILL.md', '.github/workflows/ci.yml', '.github/workflows/agentshield-security.yml']) {
+    const text = fs.readFileSync(path.join(root, rel), 'utf8');
+    const uses = [...text.matchAll(/^\s*(?:-\s*)?uses:\s*(\S+)/gm)]
+      .map(m => m[1])
+      .filter(ref => !ref.startsWith('./') && !ref.startsWith('docker://'));
+    assert.ok(uses.length > 0, `expected uses: entries in ${rel}`);
+    for (const ref of uses) {
+      assert.match(ref, /^[^@]+@[0-9a-f]{40}$/, `unpinned action ${ref} in ${rel}`);
+      const [action, sha] = ref.split('@');
+      if (reviewedActionCommits[action]) {
+        assert.ok(Object.hasOwn(reviewedActionCommits[action], sha), `${ref} in ${rel} is not a reviewed commit for ${action}`);
+      }
+    }
+  }
+
+  const migrations = fs.readFileSync(path.join(root, 'skills/database-migrations/SKILL.md'), 'utf8');
+  assert.match(migrations, /npm install --save-dev --save-exact prisma@<reviewed-version>/);
+  assert.match(migrations, /npm install --save-exact @prisma\/client@<reviewed-version>/);
+  assert.match(migrations, /npm install --save-dev --save-exact drizzle-kit@<reviewed-version>/);
+  assert.match(migrations, /npm install --save-exact drizzle-orm@<reviewed-version>/);
+  assert.match(migrations, /no general.*no-transaction switch/i);
+  assert.match(migrations, /x-no-tx-wrap.*sqlite/i);
+
+  const e2e = fs.readFileSync(path.join(root, 'skills/e2e-testing/SKILL.md'), 'utf8');
+  assert.match(e2e, /npm install --save-dev --save-exact @playwright\/test@<reviewed-version>/);
+
+  const compact = fs.readFileSync(path.join(root, 'skills/strategic-compact/SKILL.md'), 'utf8');
+  assert.match(compact, /Host-configured memory files \(host-dependent/);
+  assert.doesNotMatch(compact, /\|\s*Memory files \(`~\/\.claude\/memory\/`\)\s*\|/);
+});

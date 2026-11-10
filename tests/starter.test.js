@@ -379,6 +379,23 @@ test('session transaction releases its lock on a publication error', t => {
 });
 
 
+test('session introduction consumes piped input when synchronous stdin reads would return EAGAIN', t => {
+ const f=fixture(t);const loader=put(f.temp,'nonblocking-stdin-intro.cjs',"const fs=require('fs');const read=fs.readFileSync;fs.readFileSync=(file,...args)=>{if(file===0||file==='/dev/stdin'){const error=new Error('nonblocking stdin not ready');error.code='EAGAIN';throw error;}return read(file,...args);};");
+ const hook=path.join(root,'scripts/hooks/session-context-fallback.js');
+ const result=spawnSync(process.execPath,['--require',loader,hook],{env:f.env,encoding:'utf8',input:JSON.stringify({hook_event_name:'SessionStart'})});
+ assert.equal(result.status,0);assert.match(JSON.parse(result.stdout).hookSpecificOutput.additionalContext,/JARVIS starter toolkit/);
+ for (const input of ['', '{}', '{bad', JSON.stringify({ hook_event_name: 'Stop' })]) {
+  const r=spawnSync(process.execPath,['--require',loader,hook],{env:f.env,encoding:'utf8',input});
+  assert.equal(r.status,0);assert.deepEqual(JSON.parse(r.stdout),{continue:true});
+ }
+});
+
+test('session introduction module import reads no stdin and emits nothing', t => {
+ const f=fixture(t);const hook=path.join(root,'scripts/hooks/session-context-fallback.js');
+ const r=spawnSync(process.execPath,['-e','const m=require(process.argv[1]);process.stdout.write(JSON.stringify(m.main(JSON.stringify({hook_event_name:"SessionStart"})).hookSpecificOutput.hookEventName))',hook],{env:f.env,encoding:'utf8',timeout:5000});
+ assert.equal(r.status,0);assert.equal(r.stdout,'"SessionStart"');
+});
+
 test('hook consumes piped input when synchronous stdin reads would return EAGAIN', t => {
  const f=fixture(t);const loader=put(f.temp,'nonblocking-stdin.cjs',"const fs=require('fs');const read=fs.readFileSync;fs.readFileSync=(file,...args)=>{if(file===0){const error=new Error('nonblocking stdin not ready');error.code='EAGAIN';throw error;}return read(file,...args);};");
  const result=spawnSync(process.execPath,['--require',loader,path.join(root,'scripts/hooks/fact-forcing-gate.js')],{env:{...f.env,JARVIS_GATEGUARD:'on'},encoding:'utf8',input:JSON.stringify({session_id:'piped-input',tool_name:'Edit',tool_input:{file_path:'piped.txt'}})});

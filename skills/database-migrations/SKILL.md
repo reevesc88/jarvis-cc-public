@@ -191,8 +191,11 @@ For operations Prisma cannot express (concurrent indexes, data backfills). Prism
 -- migrations/20240115_add_email_index/migration.sql
 -- Prisma has no general no-transaction switch. Keep this as the ONLY
 -- statement in the file (no other DDL, SET, or BEGIN/COMMIT): CONCURRENTLY
--- fails inside a transaction block, and a multi-statement file runs in an
--- implicit one. Verify against your pinned Prisma version before deploying.
+-- fails inside a transaction block. Do not rely on an implicit transaction
+-- either way: depending on the Prisma version, a multi-statement file may run
+-- in one transaction or be split into separate statements, so a later failure
+-- can leave earlier statements committed. Verify against your pinned Prisma
+-- version before deploying.
 CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_users_email ON users (email);
 ```
 

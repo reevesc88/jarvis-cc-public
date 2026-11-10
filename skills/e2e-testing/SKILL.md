@@ -49,12 +49,14 @@ export class ItemsPage {
   readonly searchInput: Locator
   readonly itemCards: Locator
   readonly createButton: Locator
+  readonly noResults: Locator
 
   constructor(page: Page) {
     this.page = page
     this.searchInput = page.locator('[data-testid="search-input"]')
     this.itemCards = page.locator('[data-testid="item-card"]')
     this.createButton = page.locator('[data-testid="create-btn"]')
+    this.noResults = page.locator('[data-testid="no-results"]')
   }
 
   async goto() {
@@ -66,6 +68,10 @@ export class ItemsPage {
     const response = this.page.waitForResponse(resp => resp.url().includes('/api/search'))
     await this.searchInput.fill(query)
     await response
+    // The response event fires when headers arrive, before the body is
+    // consumed and rendered. Wait for a results-ready state (a result card or
+    // the empty state) with a retrying assertion before callers read counts.
+    await expect(this.itemCards.first().or(this.noResults)).toBeVisible()
   }
 
   async getItemCount() {
@@ -91,9 +97,8 @@ test.describe('Item Search', () => {
   test('should search by keyword', async ({ page }) => {
     await itemsPage.search('test')
 
-    const count = await itemsPage.getItemCount()
-    expect(count).toBeGreaterThan(0)
-
+    // Retrying locator assertions, not a one-shot count() read
+    await expect(itemsPage.itemCards).not.toHaveCount(0)
     await expect(itemsPage.itemCards.first()).toContainText(/test/i)
     await page.screenshot({ path: 'artifacts/search-results.png' })
   })
@@ -101,8 +106,8 @@ test.describe('Item Search', () => {
   test('should handle no results', async ({ page }) => {
     await itemsPage.search('xyznonexistent123')
 
-    await expect(page.locator('[data-testid="no-results"]')).toBeVisible()
-    expect(await itemsPage.getItemCount()).toBe(0)
+    await expect(itemsPage.noResults).toBeVisible()
+    await expect(itemsPage.itemCards).toHaveCount(0)
   })
 })
 ```
@@ -116,7 +121,8 @@ const baseURL = process.env.BASE_URL || 'http://localhost:3000'
 const isLocalTarget = (() => {
   try {
     const { hostname } = new URL(baseURL)
-    return hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '::1' || hostname === '[::1]'
+    // WHATWG URL keeps the brackets on IPv6 hostnames: new URL('http://[::1]:3000').hostname === '[::1]'
+    return hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '[::1]'
   } catch {
     return false
   }
@@ -258,8 +264,8 @@ jobs:
   test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 20
       - run: npm ci

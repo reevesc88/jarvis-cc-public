@@ -421,16 +421,29 @@ test('frontend-patterns DataLoader and useQuery snippets prevent stale async req
   assert.ok(dataLoaderBlock, 'DataLoader snippet present');
   assert.ok(useQueryBlock, 'useQuery snippet present');
 
+  // Fail loudly when a documented signature changes, instead of leaving TypeScript
+  // in place and surfacing an unclear vm SyntaxError.
+  function mustReplace(code, pattern, replacement, label) {
+    assert.match(code, pattern, `stripTs: expected ${label} in the snippet`);
+    return code.replace(pattern, replacement);
+  }
   function stripTs(code) {
-    return code
+    let out = code
       .replace(/interface\s+\w+(?:<[^>]+>)?\s*\{[\s\S]*?\n\}\n*/g, '')
-      .replace(/\/\/ Usage[\s\S]*$/m, '')
-      .replace(/export function DataLoader<T>\(\{\s*url,\s*children\s*\}:\s*DataLoaderProps<T>\)/, 'function DataLoader({ url, children })')
-      .replace(/export function useQuery<T>\(\s*key:\s*string,\s*fetcher:\s*\(\)\s*=>\s*Promise<T>,\s*options\?:\s*UseQueryOptions<T>\s*\)/, 'function useQuery(key, fetcher, options)')
+      .replace(/\/\/ Usage[\s\S]*$/m, '');
+    if (out.includes('export function DataLoader')) {
+      out = mustReplace(out, /export function DataLoader<T>\(\{\s*url,\s*children\s*\}:\s*DataLoaderProps<T>\)/, 'function DataLoader({ url, children })', 'DataLoader signature');
+      out = mustReplace(out, /return <>\{children\(data, loading, error\)\}<\/>/, 'return children(data, loading, error)', 'DataLoader JSX return');
+    }
+    if (out.includes('export function useQuery')) {
+      out = mustReplace(out, /export function useQuery<T>\(\s*key:\s*string,\s*fetcher:\s*\(\)\s*=>\s*Promise<T>,\s*options\?:\s*UseQueryOptions<T>\s*\)/, 'function useQuery(key, fetcher, options)', 'useQuery signature');
+    }
+    out = out
       .replace(/useState<[^>]+>/g, 'useState')
       .replace(/useRef<[^>]+>/g, 'useRef')
-      .replace(/\bas Error\b/g, '')
-      .replace(/return <>\{children\(data, loading, error\)\}<\/>/, 'return children(data, loading, error)');
+      .replace(/\bas Error\b/g, '');
+    assert.doesNotMatch(out, /export function|<T>|:\s*(?:string|boolean|number)\b(?![^\n]*['"`])/, 'stripTs: TypeScript syntax left in the snippet');
+    return out;
   }
 
   function createHarness(fnSource, fnName) {
@@ -462,7 +475,10 @@ test('frontend-patterns DataLoader and useQuery snippets prevent stale async req
         const prev = slots[idx];
         if (!prev || !deps || !depsEqual(prev.deps, deps)) {
           pendingLayout.push(() => {
-            if (prev && typeof prev.cleanup === 'function') prev.cleanup();
+            // Read the slot when the effect runs, not at render time, so a second
+            // render before the flush still cleans up the effect that actually ran.
+            const current = slots[idx];
+            if (current && typeof current.cleanup === 'function') current.cleanup();
             const cleanup = effect();
             slots[idx] = { deps, cleanup };
           });
@@ -473,7 +489,10 @@ test('frontend-patterns DataLoader and useQuery snippets prevent stale async req
         const prev = slots[idx];
         if (!prev || !deps || !depsEqual(prev.deps, deps)) {
           pendingPassive.push(() => {
-            if (prev && typeof prev.cleanup === 'function') prev.cleanup();
+            // Read the slot when the effect runs, not at render time, so a second
+            // render before the flush still cleans up the effect that actually ran.
+            const current = slots[idx];
+            if (current && typeof current.cleanup === 'function') current.cleanup();
             const cleanup = effect();
             slots[idx] = { deps, cleanup };
           });
@@ -501,7 +520,13 @@ test('frontend-patterns DataLoader and useQuery snippets prevent stale async req
         return fn(...args);
       },
       unmount() {
-        for (const s of slots) if (s && typeof s.cleanup === 'function') s.cleanup();
+        for (const s of slots) {
+          if (s && typeof s.cleanup === 'function') {
+            const cleanup = s.cleanup;
+            s.cleanup = undefined;
+            cleanup();
+          }
+        }
       },
     };
   }
@@ -545,6 +570,7 @@ test('frontend-patterns DataLoader and useQuery snippets prevent stale async req
   renderLoader('/api/unmount');
   loaderHarness.flushEffects();
   loaderHarness.unmount();
+  assert.equal(calls[2].signal.aborted, true, 'unmount aborts the in-flight request');
   calls[2].reject(new Error('late failure'));
   await new Promise(r => setImmediate(r));
   assert.equal(readLoader('/api/unmount').error, null);
@@ -568,6 +594,29 @@ test('frontend-patterns DataLoader and useQuery snippets prevent stale async req
   assert.equal(afterRace.data, 'value-2');
   assert.equal(afterRace.loading, false);
   assert.deepEqual(seen, [['ok', 'value-2']]);
+
+  // Current-request rejections: an Error is kept as-is and a string is wrapped, both reach onError
+  const errSeen = [];
+  const errOpts = { onSuccess: v => errSeen.push(['ok', v]), onError: e => errSeen.push(['err', e instanceof Error, e.message]) };
+  const qe1 = deferred();
+  queryHarness.render('ke1', () => qe1.promise, errOpts);
+  queryHarness.flushEffects();
+  const boom = new Error('boom');
+  qe1.reject(boom);
+  await new Promise(r => setImmediate(r));
+  const afterError = queryHarness.read('ke1', () => qe1.promise, errOpts);
+  assert.equal(afterError.error, boom);
+  assert.equal(afterError.loading, false);
+  const qe2 = deferred();
+  queryHarness.render('ke2', () => qe2.promise, errOpts);
+  queryHarness.flushEffects();
+  qe2.reject('plain-string');
+  await new Promise(r => setImmediate(r));
+  const afterString = queryHarness.read('ke2', () => qe2.promise, errOpts);
+  assert.ok(afterString.error instanceof Error);
+  assert.equal(afterString.error.message, 'plain-string');
+  assert.equal(afterString.loading, false);
+  assert.deepEqual(errSeen, [['err', true, 'boom'], ['err', true, 'plain-string']]);
 
   // Disable while k3 is pending: loading clears immediately and late rejection is dropped
   const q3 = deferred();
@@ -638,15 +687,38 @@ test('e2e-testing playwright.config snippet enables webServer only for local tar
   const stagingCfg = evalConfig({ BASE_URL: 'https://staging.example.com', CI: 'true' });
   assert.equal(stagingCfg.use.baseURL, 'https://staging.example.com');
   assert.equal(stagingCfg.webServer, undefined);
+
+  // IPv6 loopback: WHATWG URL keeps the brackets on the hostname
+  const ipv6Cfg = evalConfig({ BASE_URL: 'http://[::1]:3000' });
+  assert.equal(ipv6Cfg.webServer?.url, 'http://[::1]:3000');
+
+  const invalidCfg = evalConfig({ BASE_URL: 'not a url' });
+  assert.equal(invalidCfg.webServer, undefined);
 });
 
 test('cookbook workflow snippets pin actions to full SHAs and document pinned installs and host-dependent memory', () => {
+  // Reviewed upstream commits (verified against each repository's release tag).
+  const reviewedActionCommits = {
+    'actions/checkout': { '11d5960a326750d5838078e36cf38b85af677262': 'v4.4.0' },
+    'actions/setup-node': { '49933ea5288caeca8642d1e84afbd3f7d6820020': 'v4.4.0' },
+    'actions/setup-python': { 'a26af69be951a213d495a4c3e4e4022e16d87065': 'v5.6.0' },
+    'actions/upload-artifact': { 'ea165f8d65b6e75b540449e92b4886f43607fa02': 'v4.6.2' },
+    'docker/setup-buildx-action': { 'b5ca514318bd6ebac0fb2aedd5d36ec1b5c232a2': 'v3.10.0' },
+    'docker/login-action': { '74a5d142397b4f367a81961eba4e8cd7edddf772': 'v3.4.0' },
+    'docker/build-push-action': { 'ca052bb54ab0790a636c9b5f226502c73d547a25': 'v5.4.0' },
+  };
   for (const rel of ['skills/e2e-testing/SKILL.md', 'skills/deployment-patterns/SKILL.md', '.github/workflows/ci.yml', '.github/workflows/agentshield-security.yml']) {
     const text = fs.readFileSync(path.join(root, rel), 'utf8');
-    const uses = [...text.matchAll(/^\s*-\s*uses:\s*(\S+)/gm)].map(m => m[1]);
+    const uses = [...text.matchAll(/^\s*(?:-\s*)?uses:\s*(\S+)/gm)]
+      .map(m => m[1])
+      .filter(ref => !ref.startsWith('./') && !ref.startsWith('docker://'));
     assert.ok(uses.length > 0, `expected uses: entries in ${rel}`);
     for (const ref of uses) {
       assert.match(ref, /^[^@]+@[0-9a-f]{40}$/, `unpinned action ${ref} in ${rel}`);
+      const [action, sha] = ref.split('@');
+      if (reviewedActionCommits[action]) {
+        assert.ok(Object.hasOwn(reviewedActionCommits[action], sha), `${ref} in ${rel} is not a reviewed commit for ${action}`);
+      }
     }
   }
 

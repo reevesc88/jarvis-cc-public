@@ -52,7 +52,7 @@ Retention across compaction is host-dependent; discover and verify your active h
 |----------|------|
 | Project instructions (`CLAUDE.md` or `AGENTS.md`) | Intermediate reasoning and analysis |
 | Host task list (e.g. `TodoWrite`, when supported) | File contents you previously read |
-| Host-configured memory files (host-dependent; discover the configured path, e.g. `~/.claude/memory/` in Claude Code when enabled) | Multi-step conversation context |
+| Host-configured memory files (host-dependent; discover the configured path, e.g. the Claude Code auto-memory default `~/.claude/projects/<project>/memory/` unless your configuration overrides it) | Multi-step conversation context |
 | Git state (commits, branches) | Tool call history and counts |
 | Files on disk | Nuanced user preferences stated verbally |
 
